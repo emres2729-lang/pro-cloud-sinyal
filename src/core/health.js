@@ -197,6 +197,20 @@ export async function launch({ port, kill_existing } = {}) {
     } catch { /* ignore */ }
   }
 
+  // Windows Store (MSIX) install — Get-AppxPackage works without admin
+  if (!tvPath && platform === 'win32') {
+    try {
+      const installLocation = execSync(
+        'powershell -NoProfile -Command "(Get-AppxPackage -Name \'TradingView*\').InstallLocation"',
+        { timeout: 8000, windowsHide: true }
+      ).toString().trim();
+      if (installLocation) {
+        const candidate = `${installLocation}\\TradingView.exe`;
+        if (existsSync(candidate)) tvPath = candidate;
+      }
+    } catch { /* Windows Store package not found or PS unavailable */ }
+  }
+
   if (!tvPath && platform === 'darwin') {
     try {
       const found = execSync('mdfind "kMDItemFSName == TradingView.app" | head -1', { timeout: 5000 }).toString().trim();
