@@ -1,0 +1,37 @@
+name: Pro Cloud Sinyal Tarama
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # Her 5 dakikada bir (UTC)
+  workflow_dispatch:          # Manuel çalıştırma butonu
+
+jobs:
+  tara:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Bağımlılıkları yükle
+        run: npm ci --omit=dev
+
+      - name: State dosyasını geri yükle
+        uses: actions/cache@v4
+        with:
+          path: data/cloud_state.json
+          key: sinyal-state-${{ github.run_number }}
+          restore-keys: |
+            sinyal-state-
+
+      - name: Sinyal tara
+        run: node scripts/cloud_sinyal.mjs
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}

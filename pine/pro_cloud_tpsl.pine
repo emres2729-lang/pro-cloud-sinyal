@@ -1,0 +1,364 @@
+//@version=6
+indicator("Pro TP/SL/SR Cloud v2", overlay=true, max_labels_count=500, max_lines_count=300, max_boxes_count=100)
+
+// ── INPUTS ───────────────────────────────────────────────────────
+var G1 = "▶ Sistem"
+st_atr  = input.int(14,    "ATR Periyot",         group=G1)
+st_mult = input.float(3.0, "SuperTrend Çarpan",   group=G1, step=0.1)
+cl_mult = input.float(9.0, "Bulut Genişliği",     group=G1, step=0.5)
+ema_len = input.int(200,   "Trend EMA",            group=G1)
+smc_len = input.int(10,    "SMC Pivot",            group=G1, minval=3, maxval=30)
+use_ha  = input.bool(true, "Heiken Ashi",          group=G1)
+use_mtf = input.bool(true, "MTF Filtre",           group=G1)
+htf_tf  = input.timeframe("240", "Üst Zaman Dilimi", group=G1)
+
+var G2 = "▶ Risk"
+sl_m  = input.float(1.0, "Stop Loss × ATR", group=G2, step=0.1)
+tp1_m = input.float(2.0, "TP1 × ATR",       group=G2, step=0.1)
+tp2_m = input.float(3.5, "TP2 × ATR",       group=G2, step=0.1)
+tp3_m = input.float(5.0, "TP3 × ATR",       group=G2, step=0.1)
+
+var G3 = "▶ Görünüm"
+show_emas = input.bool(false, "EMA 5/22/50",      group=G3)
+show_fvg  = input.bool(true,  "FVG Bölgeleri",    group=G3)
+show_tpsl = input.bool(true,  "TP/SL Çizgileri",  group=G3)
+
+// ── KAYNAK ───────────────────────────────────────────────────────
+var float ha_o = na
+ha_c  = (open + high + low + close) / 4
+ha_o := na(ha_o[1]) ? (open + close) / 2 : (ha_o[1] + ha_c[1]) / 2
+ha_h  = math.max(high, math.max(ha_o, ha_c))
+ha_l  = math.min(low,  math.min(ha_o, ha_c))
+src   = use_ha ? ha_c : close
+src_h = use_ha ? ha_h : high
+src_l = use_ha ? ha_l : low
+
+// ── TEMEL ────────────────────────────────────────────────────────
+atr    = ta.atr(st_atr)
+ema200 = ta.ema(close, ema_len)
+[_, bb_up, bb_dn] = ta.bb(src, 20, 2.0)
+[st, st_dir]      = ta.supertrend(st_mult, st_atr)
+
+bull       = st_dir < 0
+bear       = st_dir > 0
+bull_cross = bull and not bull[1]
+bear_cross = bear and not bear[1]
+
+// ── MTF FİLTRE ───────────────────────────────────────────────────
+[_, htf_dir] = request.security(syminfo.tickerid, htf_tf, ta.supertrend(st_mult, st_atr), lookahead=barmerge.lookahead_off)
+htf_bull = htf_dir < 0
+htf_bear = htf_dir > 0
+
+// ── RSI DEMA ─────────────────────────────────────────────────────
+rsi      = ta.rsi(close, 14)
+rsi_ema  = ta.ema(rsi, 21)
+rsi_bull = rsi > rsi_ema
+rsi_bear = rsi < rsi_ema
+
+// ── MACD DEMA ────────────────────────────────────────────────────
+dema(x, n) => 2.0 * ta.ema(x, n) - ta.ema(ta.ema(x, n), n)
+macd_line = dema(close, 12) - dema(close, 26)
+macd_sig  = dema(macd_line, 9)
+macd_hist = macd_line - macd_sig
+macd_bull = macd_hist > 0
+macd_bear = macd_hist < 0
+
+// ── EMA STACK ────────────────────────────────────────────────────
+ema5  = ta.ema(close, 5)
+ema22 = ta.ema(close, 22)
+ema50 = ta.ema(close, 50)
+emas_bull = ema5 > ema22 and ema22 > ema50
+emas_bear = ema5 < ema22 and ema22 < ema50
+
+// ── SMC BOS / CHoCH ──────────────────────────────────────────────
+ph = ta.pivothigh(high, smc_len, smc_len)
+pl = ta.pivotlow(low,   smc_len, smc_len)
+
+var float last_sh     = na
+var float last_sl_lvl = na
+var bool  smc_bull    = false
+var bool  bos_b_done  = false
+var bool  bos_s_done  = false
+
+if not na(ph)
+    last_sh    := ph
+    bos_b_done := false
+
+if not na(pl)
+    last_sl_lvl := pl
+    bos_s_done  := false
+
+bos_bull   = not na(last_sh) and close > last_sh and not bos_b_done
+bos_bear   = not na(last_sl_lvl) and close < last_sl_lvl and not bos_s_done
+choch_bull = bos_bull and not smc_bull
+choch_bear = bos_bear and smc_bull
+
+if bos_bull
+    bos_b_done := true
+    smc_bull   := true
+
+if bos_bear
+    bos_s_done := true
+    smc_bull   := false
+
+// ── HACİM ────────────────────────────────────────────────────────
+vol_ma   = ta.sma(volume, 20)
+vol_bull = volume > vol_ma * 1.2 and close > open
+vol_bear = volume > vol_ma * 1.2 and close < open
+
+// ── SKOR ve SİNYAL ───────────────────────────────────────────────
+long_score  = (smc_bull     ? 1 : 0) + (rsi_bull ? 1 : 0) + (macd_bull ? 1 : 0) + (emas_bull ? 1 : 0) + (vol_bull ? 1 : 0)
+short_score = (not smc_bull ? 1 : 0) + (rsi_bear ? 1 : 0) + (macd_bear ? 1 : 0) + (emas_bear ? 1 : 0) + (vol_bear ? 1 : 0)
+
+mtf_ok_l  = not use_mtf or htf_bull
+mtf_ok_s  = not use_mtf or htf_bear
+long_sig  = bull_cross and long_score  >= 3 and mtf_ok_l
+short_sig = bear_cross and short_score >= 3 and mtf_ok_s
+
+// ── NEDEN ETİKETİ ────────────────────────────────────────────────
+buildReason(bool isLong) =>
+    string base = ""
+    if isLong
+        base := choch_bull ? "CHoCH↑" : bos_bull ? "BOS↑" : smc_bull ? "Swing↑" : "ST↑"
+    else
+        base := choch_bear ? "CHoCH↓" : bos_bear ? "BOS↓" : not smc_bull ? "Swing↓" : "ST↓"
+    string r1 = isLong ? (rsi_bull  ? " · RSI✓"  : "") : (rsi_bear  ? " · RSI✓"  : "")
+    string r2 = isLong ? (macd_bull ? " · MACD✓" : "") : (macd_bear ? " · MACD✓" : "")
+    string r3 = isLong ? (emas_bull ? " · EMA✓"  : "") : (emas_bear ? " · EMA✓"  : "")
+    string r4 = isLong ? (vol_bull  ? " · Vol✓"  : "") : (vol_bear  ? " · Vol✓"  : "")
+    string mtf = isLong ? (htf_bull ? " · MTF✓" : " · ⚠MTF") : (htf_bear ? " · MTF✓" : " · ⚠MTF")
+    base + r1 + r2 + r3 + r4 + (use_mtf ? mtf : "")
+
+// ── PLOT: BULUT ──────────────────────────────────────────────────
+p_st  = plot(st,                     color=color.new(color.gray,  100), display=display.none)
+p_top = plot(ema200 + atr * cl_mult, color=color.new(color.red,   100), display=display.none)
+p_bot = plot(ema200 - atr * cl_mult, color=color.new(color.green, 100), display=display.none)
+
+fill(p_st, p_top, bull ? color.new(color.red,   88) : color.new(color.red,   72))
+fill(p_bot, p_st, bull ? color.new(color.green, 72) : color.new(color.green, 88))
+
+plot(bull ? st : na,   "ST Yükseliş", color.lime, 2)
+plot(bear ? st : na,   "ST Düşüş",    color.red,  2)
+plot(ema200,           "EMA 200",     color.new(color.orange, 30), 1)
+plot(show_emas ? ema5  : na, "EMA 5",  color.yellow, 1)
+plot(show_emas ? ema22 : na, "EMA 22", color.red,    1)
+plot(show_emas ? ema50 : na, "EMA 50", color.aqua,   1)
+plot(bb_up, "BB Üst", color.new(color.blue, 65), 1)
+plot(bb_dn, "BB Alt", color.new(color.blue, 65), 1)
+
+bgcolor(bull ? color.new(color.green, 97) : color.new(color.red, 97))
+
+// ── FVG ──────────────────────────────────────────────────────────
+if show_fvg and high[2] < low and (low - high[2]) / close * 100 > 0.05
+    box.new(bar_index - 2, high[2], bar_index, low, border_color=color.new(color.lime, 20), bgcolor=color.new(color.lime, 85))
+
+if show_fvg and low[2] > high and (low[2] - high) / close * 100 > 0.05
+    box.new(bar_index - 2, high, bar_index, low[2], border_color=color.new(color.red, 20), bgcolor=color.new(color.red, 85))
+
+// ── SİNYAL OKLARI ────────────────────────────────────────────────
+plotshape(long_sig,  "AL",  shape.triangleup,   location.belowbar, color.lime, text="AL",  textcolor=color.black, size=size.small)
+plotshape(short_sig, "SAT", shape.triangledown, location.abovebar, color.red,  text="SAT", textcolor=color.white, size=size.small)
+
+if long_sig
+    label.new(bar_index, src_l - atr * 1.2, buildReason(true), color=color.new(color.lime, 15), textcolor=color.black, style=label.style_label_up, size=size.small)
+
+if short_sig
+    label.new(bar_index, src_h + atr * 1.2, buildReason(false), color=color.new(color.red, 15), textcolor=color.white, style=label.style_label_down, size=size.small)
+
+// ── TP / SL ──────────────────────────────────────────────────────
+var line  tp1l       = na
+var line  tp2l       = na
+var line  tp3l       = na
+var line  sll        = na
+var label tp1b       = na
+var label tp2b       = na
+var label tp3b       = na
+var label slb        = na
+var label sigb       = na
+var bool  pos_long   = false
+var bool  pos_short  = false
+var float pos_sl     = na
+var float pos_entry  = na
+var float pos_tp1    = na
+var float pos_tp3    = na
+var bool  be_done    = false
+
+deleteLevels() =>
+    line.delete(tp1l)
+    line.delete(tp2l)
+    line.delete(tp3l)
+    line.delete(sll)
+    label.delete(tp1b)
+    label.delete(tp2b)
+    label.delete(tp3b)
+    label.delete(slb)
+    label.delete(sigb)
+
+// Breakeven: TP1 vurulunca stop'u entry'ye çek
+if pos_long and not be_done and not na(pos_tp1) and high >= pos_tp1
+    pos_sl  := pos_entry
+    be_done := true
+    if not na(sll)
+        line.set_y1(sll, pos_entry)
+        line.set_y2(sll, pos_entry)
+    if not na(slb)
+        label.set_y(slb, pos_entry)
+        label.set_text(slb, "BE  " + str.tostring(math.round(pos_entry, 2)))
+
+if pos_short and not be_done and not na(pos_tp1) and low <= pos_tp1
+    pos_sl  := pos_entry
+    be_done := true
+    if not na(sll)
+        line.set_y1(sll, pos_entry)
+        line.set_y2(sll, pos_entry)
+    if not na(slb)
+        label.set_y(slb, pos_entry)
+        label.set_text(slb, "BE  " + str.tostring(math.round(pos_entry, 2)))
+
+// Stop veya TP3 vuruldu mu? → çizgileri sil
+if pos_long and (low <= pos_sl or high >= pos_tp3)
+    deleteLevels()
+    pos_long  := false
+    pos_sl    := na
+    be_done   := false
+
+if pos_short and (high >= pos_sl or low <= pos_tp3)
+    deleteLevels()
+    pos_short := false
+    pos_sl    := na
+    be_done   := false
+
+if long_sig and show_tpsl
+    deleteLevels()
+    ep   = src
+    tp1  = ep + atr * tp1_m
+    tp2  = ep + atr * tp2_m
+    tp3  = ep + atr * tp3_m
+    sl   = ep - atr * sl_m
+    rr   = math.round(tp1_m / sl_m, 1)
+    tp1l     := line.new(bar_index, tp1, bar_index + 1, tp1, color=color.new(color.green, 20), style=line.style_dotted, width=2, extend=extend.right)
+    tp2l     := line.new(bar_index, tp2, bar_index + 1, tp2, color=color.new(color.green, 40), style=line.style_dotted, width=2, extend=extend.right)
+    tp3l     := line.new(bar_index, tp3, bar_index + 1, tp3, color=color.new(color.green, 60), style=line.style_dotted, width=2, extend=extend.right)
+    sll      := line.new(bar_index, sl,  bar_index + 1, sl,  color=color.new(color.red,   20), style=line.style_dotted, width=2, extend=extend.right)
+    tp1b     := label.new(bar_index + 5, tp1, "TP1  " + str.tostring(math.round(tp1, 2)), color=color.new(color.green, 10), textcolor=color.white, style=label.style_label_left, size=size.small)
+    tp2b     := label.new(bar_index + 5, tp2, "TP2  " + str.tostring(math.round(tp2, 2)), color=color.new(color.green, 30), textcolor=color.white, style=label.style_label_left, size=size.small)
+    tp3b     := label.new(bar_index + 5, tp3, "TP3  " + str.tostring(math.round(tp3, 2)), color=color.new(color.green, 10), textcolor=color.lime,  style=label.style_label_left, size=size.normal)
+    slb      := label.new(bar_index + 5, sl,  "Stop " + str.tostring(math.round(sl,  2)), color=color.new(color.red,   10), textcolor=color.white, style=label.style_label_left, size=size.small)
+    sigb     := label.new(bar_index, ep, "LONG  RR 1:" + str.tostring(rr), color=color.new(color.lime, 5), textcolor=color.black, style=label.style_label_up, size=size.small)
+    pos_long  := true
+    pos_short := false
+    pos_entry := ep
+    pos_sl    := sl
+    pos_tp1   := tp1
+    pos_tp3   := tp3
+    be_done   := false
+
+if short_sig and show_tpsl
+    deleteLevels()
+    ep   = src
+    tp1  = ep - atr * tp1_m
+    tp2  = ep - atr * tp2_m
+    tp3  = ep - atr * tp3_m
+    sl   = ep + atr * sl_m
+    rr   = math.round(tp1_m / sl_m, 1)
+    tp1l     := line.new(bar_index, tp1, bar_index + 1, tp1, color=color.new(color.red,   20), style=line.style_dotted, width=2, extend=extend.right)
+    tp2l     := line.new(bar_index, tp2, bar_index + 1, tp2, color=color.new(color.red,   40), style=line.style_dotted, width=2, extend=extend.right)
+    tp3l     := line.new(bar_index, tp3, bar_index + 1, tp3, color=color.new(color.red,   60), style=line.style_dotted, width=2, extend=extend.right)
+    sll      := line.new(bar_index, sl,  bar_index + 1, sl,  color=color.new(color.green, 20), style=line.style_dotted, width=2, extend=extend.right)
+    tp1b     := label.new(bar_index + 5, tp1, "TP1  " + str.tostring(math.round(tp1, 2)), color=color.new(color.red,   10), textcolor=color.white, style=label.style_label_left, size=size.small)
+    tp2b     := label.new(bar_index + 5, tp2, "TP2  " + str.tostring(math.round(tp2, 2)), color=color.new(color.red,   30), textcolor=color.white, style=label.style_label_left, size=size.small)
+    tp3b     := label.new(bar_index + 5, tp3, "TP3  " + str.tostring(math.round(tp3, 2)), color=color.new(color.red,   10), textcolor=color.red,   style=label.style_label_left, size=size.normal)
+    slb      := label.new(bar_index + 5, sl,  "Stop " + str.tostring(math.round(sl,  2)), color=color.new(color.green, 10), textcolor=color.white, style=label.style_label_left, size=size.small)
+    sigb     := label.new(bar_index, ep, "SHORT  RR 1:" + str.tostring(rr), color=color.new(color.red, 5), textcolor=color.white, style=label.style_label_down, size=size.small)
+    pos_short := true
+    pos_long  := false
+    pos_entry := ep
+    pos_sl    := sl
+    pos_tp1   := tp1
+    pos_tp3   := tp3
+    be_done   := false
+
+if not na(tp1b)
+    label.set_x(tp1b, bar_index + 5)
+    label.set_x(tp2b, bar_index + 5)
+    label.set_x(tp3b, bar_index + 5)
+    label.set_x(slb,  bar_index + 5)
+
+// ── MCP LABEL ────────────────────────────────────────────────────
+if long_sig
+    ep  = src
+    lbl = "LONG|v:2|score:"  + str.tostring(long_score)                    +
+          "|entry:"           + str.tostring(math.round(ep,            5))  +
+          "|sl:"              + str.tostring(math.round(ep - atr*sl_m, 5))  +
+          "|tp1:"             + str.tostring(math.round(ep + atr*tp1_m,5))  +
+          "|tp2:"             + str.tostring(math.round(ep + atr*tp2_m,5))  +
+          "|tp3:"             + str.tostring(math.round(ep + atr*tp3_m,5))  +
+          "|atr:"             + str.tostring(math.round(atr,           5))  +
+          "|rsi:"             + str.tostring(math.round(rsi,           1))  +
+          "|rr:"              + str.tostring(math.round(tp1_m/sl_m,    2))  +
+          "|smc:"             + str.tostring(smc_bull   ? 1 : 0)            +
+          "|bos:"             + str.tostring(bos_bull   ? 1 : 0)            +
+          "|choch:"           + str.tostring(choch_bull ? 1 : 0)            +
+          "|rdema:"           + str.tostring(rsi_bull   ? 1 : 0)            +
+          "|mdema:"           + str.tostring(macd_bull  ? 1 : 0)            +
+          "|emas:"            + str.tostring(emas_bull  ? 1 : 0)            +
+          "|mtf:"             + str.tostring(htf_bull   ? 1 : 0)            +
+          "|ts:"              + str.tostring(time)
+    label.new(bar_index, src_l - atr * 0.2, lbl, color=color.new(color.lime, 5), textcolor=color.black, style=label.style_label_up, size=size.tiny)
+
+if short_sig
+    ep  = src
+    lbl = "SHORT|v:2|score:" + str.tostring(short_score)                   +
+          "|entry:"           + str.tostring(math.round(ep,            5))  +
+          "|sl:"              + str.tostring(math.round(ep + atr*sl_m, 5))  +
+          "|tp1:"             + str.tostring(math.round(ep - atr*tp1_m,5))  +
+          "|tp2:"             + str.tostring(math.round(ep - atr*tp2_m,5))  +
+          "|tp3:"             + str.tostring(math.round(ep - atr*tp3_m,5))  +
+          "|atr:"             + str.tostring(math.round(atr,           5))  +
+          "|rsi:"             + str.tostring(math.round(rsi,           1))  +
+          "|rr:"              + str.tostring(math.round(tp1_m/sl_m,    2))  +
+          "|smc:"             + str.tostring(smc_bull   ? 1 : 0)            +
+          "|bos:"             + str.tostring(bos_bear   ? 1 : 0)            +
+          "|choch:"           + str.tostring(choch_bear ? 1 : 0)            +
+          "|rdema:"           + str.tostring(rsi_bear   ? 1 : 0)            +
+          "|mdema:"           + str.tostring(macd_bear  ? 1 : 0)            +
+          "|emas:"            + str.tostring(emas_bear  ? 1 : 0)            +
+          "|mtf:"             + str.tostring(htf_bear   ? 1 : 0)            +
+          "|ts:"              + str.tostring(time)
+    label.new(bar_index, src_h + atr * 0.2, lbl, color=color.new(color.red, 5), textcolor=color.white, style=label.style_label_down, size=size.tiny)
+
+// ── NATIVE ALERT ─────────────────────────────────────────────────
+alertcondition(long_sig,  title="🟢 Pro Cloud LONG",  message="LONG {{ticker}} @ {{close}} | TF:{{interval}}")
+alertcondition(short_sig, title="🔴 Pro Cloud SHORT", message="SHORT {{ticker}} @ {{close}} | TF:{{interval}}")
+
+// ── PANEL ────────────────────────────────────────────────────────
+score_now = pos_long ? long_score : pos_short ? short_score : 0
+var table T = table.new(position.top_right, 2, 9, bgcolor=color.new(color.black, 60), border_color=color.new(color.gray, 40), border_width=1)
+
+if barstate.islast
+    G  = color.new(color.lime, 0)
+    R  = color.new(color.red,  0)
+    Gr = color.new(color.gray, 30)
+    H  = color.new(color.navy, 20)
+
+    table.cell(T, 0, 0, "PRO CLOUD v2",                              text_color=color.yellow,      bgcolor=H, text_size=size.small)
+    table.cell(T, 1, 0, syminfo.ticker + " · " + timeframe.period,   text_color=color.yellow,      bgcolor=H, text_size=size.small)
+    table.cell(T, 0, 1, "Trend",       text_color=Gr, text_size=size.tiny)
+    table.cell(T, 1, 1, bull ? "▲ YÜKSELİŞ" : "▼ DÜŞÜŞ",           text_color=bull ? G : R,      text_size=size.tiny)
+    table.cell(T, 0, 2, "MTF " + htf_tf + "dk", text_color=Gr, text_size=size.tiny)
+    table.cell(T, 1, 2, htf_bull ? "▲ Boğa" : "▼ Ayı",              text_color=htf_bull ? G : R,  text_size=size.tiny)
+    table.cell(T, 0, 3, "SMC",         text_color=Gr, text_size=size.tiny)
+    table.cell(T, 1, 3, smc_bull ? "▲ Boğa" : "▼ Ayı",              text_color=smc_bull ? G : R,  text_size=size.tiny)
+    table.cell(T, 0, 4, "RSI/EMA21",   text_color=Gr, text_size=size.tiny)
+    table.cell(T, 1, 4, (rsi_bull ? "▲ " : "▼ ") + str.tostring(math.round(rsi, 1)), text_color=rsi_bull ? G : R, text_size=size.tiny)
+    table.cell(T, 0, 5, "MACD DEMA",   text_color=Gr, text_size=size.tiny)
+    table.cell(T, 1, 5, macd_bull ? "▲ Pozitif" : "▼ Negatif",      text_color=macd_bull ? G : R, text_size=size.tiny)
+    table.cell(T, 0, 6, "EMA 5/22/50", text_color=Gr, text_size=size.tiny)
+    table.cell(T, 1, 6, emas_bull ? "▲ Hizalı" : emas_bear ? "▼ Hizalı" : "◆ Nötr", text_color=emas_bull ? G : emas_bear ? R : Gr, text_size=size.tiny)
+    table.cell(T, 0, 7, "Hacim",       text_color=Gr, text_size=size.tiny)
+    table.cell(T, 1, 7, vol_bull ? "⚡ AL" : vol_bear ? "⚡ SAT" : "— Normal", text_color=vol_bull ? G : vol_bear ? R : Gr, text_size=size.tiny)
+
+    string skor_txt = "Skor " + str.tostring(bull ? long_score : short_score) + "/5"
+    string sig_txt  = long_sig ? "🟢 AL  " + skor_txt : short_sig ? "🔴 SAT  " + skor_txt : "⏳ Bekle"
+    table.cell(T, 0, 8, sig_txt, text_color=long_sig ? G : short_sig ? R : Gr, text_size=size.small)
+    table.cell(T, 1, 8, "RR 1:" + str.tostring(math.round(tp1_m / sl_m, 1)), text_color=color.white, text_size=size.small)
