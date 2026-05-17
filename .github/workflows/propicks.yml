@@ -48,7 +48,6 @@ jobs:
             node scripts/propicks_cloud.mjs
           fi
         env:
-          INVESTING_EMAIL:    ${{ secrets.INVESTING_EMAIL }}
-          INVESTING_PASSWORD: ${{ secrets.INVESTING_PASSWORD }}
+          INVESTING_COOKIES:  ${{ secrets.INVESTING_COOKIES }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
