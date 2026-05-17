@@ -3,7 +3,12 @@ name: Pro Cloud Sinyal Tarama
 on:
   schedule:
     - cron: '*/5 * * * *'   # Her 5 dakikada bir (UTC)
-  workflow_dispatch:          # Manuel çalıştırma butonu
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Mod: normal veya test-telegram'
+        required: false
+        default: 'normal'
 
 jobs:
   tara:
@@ -31,7 +36,12 @@ jobs:
             sinyal-state-
 
       - name: Sinyal tara
-        run: node scripts/cloud_sinyal.mjs
+        run: |
+          if [ "${{ github.event.inputs.mode }}" = "test-telegram" ]; then
+            node scripts/cloud_sinyal.mjs --test-telegram
+          else
+            node scripts/cloud_sinyal.mjs
+          fi
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}

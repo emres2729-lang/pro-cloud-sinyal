@@ -377,8 +377,30 @@ Skor ${sig.score}/${sig.maxScore} · RSI ${sig.rsi} · RR 1:${rr}
 ${sig.konfluence}`;
 }
 
+// ── TEST TELEGRAM ────────────────────────────────────────────────
+async function testTelegram() {
+  log('Test mesajı gönderiliyor...');
+  const msg = `🧪 <b>Test — Pro Cloud v2</b>
+
+⏰ ${now()}
+☁️ <i>GitHub Actions aktif!</i>
+
+✅ 38 sembol taranmaya hazır:
+• Kripto: BTC ETH XRP AVAX SAND GALA MANA ARB BLUR NEO HOT
+• Endeks: US100 SP500 DE40 XU100 VIX US30
+• Emtia: GOLD SILVER BRENT USOIL
+• Forex: 16 parite
+
+Her 5 dakikada otomatik taranıyor.
+Sinyal gelince bu Telegram'a düşecek. 🚀`;
+  const r = await telegram(msg);
+  if (r.ok) log('✓ Test mesajı gönderildi!');
+  else log('✗ Telegram HATA:', r.description);
+}
+
 // ── MAIN ──────────────────────────────────────────────────────────
 async function main() {
+  if (process.argv.includes('--test-telegram')) { await testTelegram(); return; }
   log('━━━ Pro Cloud v2 — Tam Sistem (SuperTrend+MTF+SMC+DEMA)' + (DRY?' [DRY]':'') + ' ━━━');
   const state = loadState();
   let yeniSinyal = false;
