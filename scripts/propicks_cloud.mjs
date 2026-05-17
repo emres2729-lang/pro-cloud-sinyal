@@ -17,7 +17,8 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 const COOKIES_B64 = process.env.INVESTING_COOKIES;  // base64 JSON cookie dizisi
 const TOKEN    = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT     = process.env.TELEGRAM_CHAT_ID;
-const DRY      = process.argv.includes('--dry');
+const DRY           = process.argv.includes('--dry');
+const TEST_TELEGRAM = process.argv.includes('--test-telegram');
 
 const STATE_FILE    = path.join(DATA_DIR, 'propicks_state.json');
 const PREV_FILE     = path.join(DATA_DIR, 'propicks_prev.json');
@@ -238,6 +239,7 @@ function karsilastir(bugun, dun) {
 
 // ── TELEGRAM ─────────────────────────────────────────────────────────────
 function sendTelegram(text) {
+  if (!TOKEN || !CHAT) { log('Telegram bilgileri eksik, atlandı'); return Promise.resolve(); }
   return new Promise((res, rej) => {
     const body = JSON.stringify({ chat_id: CHAT, text, parse_mode: 'HTML', disable_web_page_preview: true });
     const req = https.request({
@@ -255,7 +257,7 @@ function sendTelegram(text) {
 function formatRapor(bolge, hisseler, prev, etikle) {
   const dunMap = new Map((prev[bolge] || []).map(h => [h.ticker, h]));
   const { yeniEklenen, cikarilanlar, puanYukselenler } = karsilastir(hisseler, prev[bolge] || []);
-  const enGuclu = hisseler.sort((a, b) => b.skor - a.skor).slice(0, 5);
+  const enGuclu = [...hisseler].sort((a, b) => b.skor - a.skor).slice(0, 5);
 
   const BOLGE_ADI = { US: 'ABD', EU: 'AVRUPA', TR: 'TÜRKİYE / BIST' };
   const ad = BOLGE_ADI[bolge] || bolge;
@@ -315,8 +317,20 @@ async function main() {
   log(`  Tarih: ${new Date().toLocaleDateString('tr-TR')}`);
   log('═══════════════════════════════════════════════');
 
-  if (!EMAIL || !PASSWORD) {
-    log('HATA: INVESTING_EMAIL veya INVESTING_PASSWORD eksik');
+  // Test modu: sadece Telegram bağlantısını test et
+  if (TEST_TELEGRAM) {
+    if (!TOKEN || !CHAT) { log('HATA: TELEGRAM_BOT_TOKEN veya TELEGRAM_CHAT_ID eksik'); process.exit(1); }
+    const r = await sendTelegram(`✅ <b>ProPicks Cloud — Test</b>\n\nTelegram bağlantısı çalışıyor.\n⏱ ${now()}`);
+    log(r?.ok ? '✓ Telegram test başarılı' : `✗ Telegram test hatası: ${r?.description}`);
+    return;
+  }
+
+  if (!COOKIES_B64) {
+    log('HATA: INVESTING_COOKIES secret eksik — propicks_auth_kur.mjs çalıştır ve GitHub Secret ekle');
+    process.exit(1);
+  }
+  if (!TOKEN || !CHAT) {
+    log('HATA: TELEGRAM_BOT_TOKEN veya TELEGRAM_CHAT_ID eksik');
     process.exit(1);
   }
 
@@ -371,11 +385,11 @@ async function main() {
   }
 
   // 3. TELEGRAM RAPORU OLUŞTUR
-  const toplamHisse = Object.values(bugun).flat().filter(Array.isArray).flat().length;
+  const toplamHisse = (bugun.US?.length || 0) + (bugun.EU?.length || 0) + (bugun.TR?.length || 0);
 
   let msg = `🏦 <b>GÜNLÜK AI PİYASA TARAMASI</b>\n`;
   msg += `📅 ${new Date().toLocaleDateString('tr-TR', { weekday:'long', day:'numeric', month:'long' })}\n`;
-  msg += `☁️ <i>Investing.com Pro · ProPicks AI</i>\n\n`;
+  msg += `☁️ <i>Investing.com Pro · ProPicks AI · ${toplamHisse} hisse tarandı</i>\n\n`;
 
   // Bölge raporları
   for (const bolge of ['TR', 'US', 'EU']) {
@@ -386,7 +400,6 @@ async function main() {
 
   // Genel özet
   const tumHisseler = [...(bugun.TR || []), ...(bugun.US || []), ...(bugun.EU || [])];
-  const yeniTopla   = tumHisseler.filter(h => !loadState(STATE_FILE)[h.bolge]?.find(p => p.ticker === h.ticker));
 
   msg += `\n<b>━━ SEKTÖR ROTASYONU ━━</b>\n`;
   const bolge_us = bugun.US || [];

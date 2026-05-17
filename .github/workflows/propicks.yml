@@ -6,14 +6,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Mod: normal veya dry'
+        description: 'Mod: normal | dry | test-telegram'
         required: false
         default: 'normal'
 
 jobs:
   tara:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Kodu al
@@ -28,9 +28,11 @@ jobs:
         run: npm ci --omit=dev
 
       - name: Playwright tarayıcı yükle
+        if: ${{ github.event.inputs.mode != 'test-telegram' }}
         run: npx playwright install chromium --with-deps
 
       - name: Önceki state'i geri yükle
+        if: ${{ github.event.inputs.mode != 'test-telegram' }}
         uses: actions/cache@v4
         with:
           path: |
@@ -42,8 +44,11 @@ jobs:
 
       - name: ProPicks tara
         run: |
-          if [ "${{ github.event.inputs.mode }}" = "dry" ]; then
+          MODE="${{ github.event.inputs.mode }}"
+          if [ "$MODE" = "dry" ]; then
             node scripts/propicks_cloud.mjs --dry
+          elif [ "$MODE" = "test-telegram" ]; then
+            node scripts/propicks_cloud.mjs --test-telegram
           else
             node scripts/propicks_cloud.mjs
           fi

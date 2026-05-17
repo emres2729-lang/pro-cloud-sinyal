@@ -4,3 +4,8 @@ scripts/current.pine
 temp_*
 *.log
 discovery-log.json
+.env
+logs/
+data/propicks_state.json
+data/propicks_prev.json
+data/cloud_state.json
