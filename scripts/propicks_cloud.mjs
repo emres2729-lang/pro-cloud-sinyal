@@ -48,7 +48,7 @@ const STRATEGIES = {
   ],
 };
 
-const BASE = 'https://tr.investing.com';
+const BASE = 'https://www.investing.com';
 
 // ── STATE ────────────────────────────────────────────────────────────────
 function loadState(file) {

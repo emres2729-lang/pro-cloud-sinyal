@@ -40,7 +40,7 @@ const context = await browser.newContext({
 const page = await context.newPage();
 
 // Giriş sayfasına git
-await page.goto('https://tr.investing.com/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
+await page.goto('https://www.investing.com/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
 await page.bringToFront();
 
 console.log('Giriş bekleniyor... (max 10 dakika)');
@@ -83,7 +83,7 @@ console.log(`\n\nGiriş başarılı → ${page.url()}`);
 // Pro sayfasına git — tüm Pro cookie'leri al
 console.log('Pro sayfasına yönlendiriliyor...');
 try {
-  await page.goto('https://tr.investing.com/pro/propicks', { waitUntil: 'domcontentloaded', timeout: 15000 });
+  await page.goto('https://www.investing.com/pro/propicks', { waitUntil: 'domcontentloaded', timeout: 15000 });
 } catch {
   // timeout olsa da devam et
 }
