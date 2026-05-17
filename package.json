@@ -16,15 +16,22 @@
     "tv": "node src/cli/index.js",
     "test": "node --test tests/e2e.test.js tests/pine_analyze.test.js",
     "test:e2e": "node --test tests/e2e.test.js",
-    "test:unit": "node --test tests/pine_analyze.test.js tests/cli.test.js",
+    "test:unit": "node --test tests/pine_analyze.test.js tests/cli.test.js tests/propicks_core.test.js",
     "test:cli": "node --test tests/cli.test.js",
     "test:all": "node --test tests/e2e.test.js tests/pine_analyze.test.js tests/cli.test.js",
     "test:verbose": "node --test --test-reporter=spec tests/e2e.test.js tests/pine_analyze.test.js",
     "test:count": "node --test --test-reporter=spec tests/e2e.test.js 2>&1 | tail -5",
-    "propicks:committee": "node scripts/investment_committee_analiz.mjs"
+    "propicks:committee": "node scripts/investment_committee_analiz.mjs",
+    "propicks:session": "node scripts/propicks_run.mjs --mode=session-check",
+    "propicks:login": "node scripts/propicks_run.mjs --mode=login",
+    "propicks:dry": "node scripts/propicks_run.mjs --mode=dry --offline",
+    "propicks:normal": "node scripts/propicks_run.mjs --mode=normal",
+    "propicks:backtest": "node scripts/propicks_run.mjs --mode=backtest",
+    "propicks:test-telegram": "node scripts/propicks_run.mjs --mode=test-telegram"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "better-sqlite3": "^9.4.3",
     "chrome-remote-interface": "^0.33.2",
     "dotenv": "^17.4.1",
     "playwright": "^1.60.0"

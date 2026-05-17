@@ -2,18 +2,18 @@ name: ProPicks AI Hisse İstihbarat
 
 on:
   schedule:
-    - cron: '0 7 * * 1-5'   # Haftaiçi 07:00 UTC = 10:00 İstanbul
+    - cron: '0 7 * * 1-5'
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Mod: normal | dry | test-telegram'
+        description: 'Mod: normal | dry | session-check | test-telegram'
         required: false
         default: 'normal'
 
 jobs:
   tara:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Kodu al
@@ -24,6 +24,10 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Build tools (better-sqlite3 için)
+        if: ${{ github.event.inputs.mode != 'test-telegram' && github.event.inputs.mode != 'session-check' }}
+        run: sudo apt-get install -y python3 make g++
+
       - name: Bağımlılıkları yükle
         run: npm ci --omit=dev
 
@@ -32,27 +36,29 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Önceki state'i geri yükle
-        if: ${{ github.event.inputs.mode != 'test-telegram' }}
+        if: ${{ github.event.inputs.mode != 'test-telegram' && github.event.inputs.mode != 'session-check' }}
         uses: actions/cache@v4
         with:
-          path: |
-            data/propicks_state.json
-            data/propicks_prev.json
-          key: propicks-state-${{ github.run_number }}
+          path: data/propicks.db
+          key: propicks-db-${{ github.run_number }}
           restore-keys: |
-            propicks-state-
+            propicks-db-
 
-      - name: ProPicks tara
+      - name: ProPicks çalıştır
         run: |
           MODE="${{ github.event.inputs.mode }}"
-          if [ "$MODE" = "dry" ]; then
-            node scripts/propicks_cloud.mjs --dry
-          elif [ "$MODE" = "test-telegram" ]; then
-            node scripts/propicks_cloud.mjs --test-telegram
-          else
-            node scripts/propicks_cloud.mjs
-          fi
+          [ -z "$MODE" ] && MODE="normal"
+          node scripts/propicks_run.mjs --mode=$MODE
         env:
           INVESTING_COOKIES:  ${{ secrets.INVESTING_COOKIES }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: Ekran görüntülerini artifact olarak kaydet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: propicks-screens-${{ github.run_number }}
+          path: data/screens/
+          if-no-files-found: ignore
+          retention-days: 7
