@@ -1,0 +1,54 @@
+name: ProPicks AI Hisse İstihbarat
+
+on:
+  schedule:
+    - cron: '0 7 * * 1-5'   # Haftaiçi 07:00 UTC = 10:00 İstanbul
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Mod: normal veya dry'
+        required: false
+        default: 'normal'
+
+jobs:
+  tara:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Bağımlılıkları yükle
+        run: npm ci --omit=dev
+
+      - name: Playwright tarayıcı yükle
+        run: npx playwright install chromium --with-deps
+
+      - name: Önceki state'i geri yükle
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/propicks_state.json
+            data/propicks_prev.json
+          key: propicks-state-${{ github.run_number }}
+          restore-keys: |
+            propicks-state-
+
+      - name: ProPicks tara
+        run: |
+          if [ "${{ github.event.inputs.mode }}" = "dry" ]; then
+            node scripts/propicks_cloud.mjs --dry
+          else
+            node scripts/propicks_cloud.mjs
+          fi
+        env:
+          INVESTING_EMAIL:    ${{ secrets.INVESTING_EMAIL }}
+          INVESTING_PASSWORD: ${{ secrets.INVESTING_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
