@@ -22,9 +22,20 @@ const CHAT  = process.env.TELEGRAM_CHAT_ID;
 const DRY   = process.argv.includes('--dry');
 
 const SEMBOLLER = [
-  // ── Kripto (7/24 açık) ─────────────────────────────────────────
-  { yahoo: 'BTC-USD',  isim: 'BTCUSD', tf: '1h',  range: '30d' },
-  { yahoo: 'ETH-USD',  isim: 'ETHUSD', tf: '1h',  range: '30d' },
+  // ── Kripto Ana ─────────────────────────────────────────────────
+  { yahoo: 'BTC-USD',  isim: 'BTCUSD',  tf: '1h', range: '30d' },
+  { yahoo: 'ETH-USD',  isim: 'ETHUSD',  tf: '1h', range: '30d' },
+  { yahoo: 'ETH-EUR',  isim: 'ETHEUR',  tf: '1h', range: '30d' },
+  { yahoo: 'XRP-USD',  isim: 'XRPUSD',  tf: '1h', range: '30d' },
+  { yahoo: 'AVAX-USD', isim: 'AVAXUSD', tf: '1h', range: '30d' },
+  // ── Kripto Altcoin ─────────────────────────────────────────────
+  { yahoo: 'SAND-USD',  isim: 'SAND',   tf: '1h', range: '30d' },
+  { yahoo: 'HOT-USD',   isim: 'HOT',    tf: '1h', range: '30d' },
+  { yahoo: 'GALA-USD',  isim: 'GALA',   tf: '1h', range: '30d' },
+  { yahoo: 'MANA-USD',  isim: 'MANA',   tf: '1h', range: '30d' },
+  { yahoo: 'ARB-USD',   isim: 'ARB',    tf: '1h', range: '30d' },
+  { yahoo: 'BLUR-USD',  isim: 'BLUR',   tf: '1h', range: '30d' },
+  { yahoo: 'NEO-USD',   isim: 'NEO',    tf: '1h', range: '30d' },
   // ── Endeksler ──────────────────────────────────────────────────
   { yahoo: '^VIX',     isim: 'VIX',    tf: '1h',  range: '30d' },
   { yahoo: '^NDX',     isim: 'US100',  tf: '15m', range: '5d'  },
