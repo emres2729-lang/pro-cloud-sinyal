@@ -61,11 +61,28 @@ function saveState(file, data) {
 // ── LOGIN ────────────────────────────────────────────────────────────────
 async function login(page) {
   log('Investing.com Pro giriş yapılıyor...');
-  await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await delay(2000);
 
-  // Email
-  const emailSel = ['input[name="email"]', '#email', 'input[type="email"]', 'input[placeholder*="mail" i]'];
+  // Önce sayfadaki tüm input/button yapısını incele
+  await page.goto(`${BASE}/login`, { waitUntil: 'networkidle', timeout: 30000 });
+  await delay(3000);
+
+  // Sayfa yapısını logla (debug)
+  const pageTitle = await page.title();
+  log(`  Sayfa: ${pageTitle} | URL: ${page.url()}`);
+  const formInfo = await page.evaluate(() => {
+    const inputs = [...document.querySelectorAll('input')].map(i => `${i.type}[name=${i.name}][id=${i.id}][ph=${i.placeholder?.slice(0,20)}]`);
+    const buttons = [...document.querySelectorAll('button')].map(b => `"${b.textContent.trim().slice(0,30)}"[type=${b.type}]`);
+    return { inputs: inputs.slice(0, 8), buttons: buttons.slice(0, 6) };
+  });
+  log(`  Inputs: ${JSON.stringify(formInfo.inputs)}`);
+  log(`  Buttons: ${JSON.stringify(formInfo.buttons)}`);
+
+  // Email — geniş seçici listesi
+  const emailSel = [
+    'input[name="email"]', '#email', 'input[type="email"]',
+    'input[placeholder*="mail" i]', 'input[placeholder*="e-posta" i]',
+    'input[autocomplete="email"]', 'input[autocomplete="username"]',
+  ];
   let emailFilled = false;
   for (const sel of emailSel) {
     try {
@@ -75,10 +92,20 @@ async function login(page) {
       break;
     } catch {}
   }
+  if (!emailFilled) {
+    // Son çare: tüm text/email input'larının ilkine yaz
+    try {
+      await page.fill('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])', EMAIL, { timeout: 3000 });
+      emailFilled = true;
+      log('  Email girildi (genel input)');
+    } catch {}
+  }
   if (!emailFilled) throw new Error('Email input bulunamadı');
 
+  await delay(500);
+
   // Password
-  const passSel = ['input[name="password"]', '#password', 'input[type="password"]'];
+  const passSel = ['input[name="password"]', '#password', 'input[type="password"]', 'input[autocomplete="current-password"]'];
   let passFilled = false;
   for (const sel of passSel) {
     try {
@@ -90,29 +117,52 @@ async function login(page) {
   }
   if (!passFilled) throw new Error('Password input bulunamadı');
 
-  // Submit
-  const submitSel = ['button[type="submit"]', 'input[type="submit"]', 'button:has-text("Sign In")', 'button:has-text("Giriş")'];
+  await delay(500);
+
+  // Submit — önce buton ara, bulamazsan Enter'a bas
+  const submitSel = [
+    'button[type="submit"]',
+    'input[type="submit"]',
+    'button:has-text("Sign In")',
+    'button:has-text("Log In")',
+    'button:has-text("Login")',
+    'button:has-text("Giriş")',
+    'button:has-text("Giriş Yap")',
+    '[data-test="login-button"]',
+    '[class*="loginButton"]',
+    '[class*="signIn"]',
+    '[class*="submit"]',
+  ];
+  let submitted = false;
   for (const sel of submitSel) {
     try {
-      await page.click(sel, { timeout: 3000 });
+      await page.click(sel, { timeout: 2000 });
       log(`  Giriş butonu tıklandı (${sel})`);
+      submitted = true;
       break;
     } catch {}
   }
+  if (!submitted) {
+    // Enter tuşu ile gönder
+    await page.keyboard.press('Enter');
+    log('  Enter tuşu ile gönderildi');
+  }
 
-  await delay(4000);
+  await delay(5000);
 
   // Captcha kontrolü
-  const captcha = await page.$('[class*="captcha"], #captcha, iframe[src*="captcha"]');
+  const captcha = await page.$('[class*="captcha"], #captcha, iframe[src*="captcha"], iframe[src*="recaptcha"]');
   if (captcha) {
-    log('⚠ CAPTCHA tespit edildi — giriş başarısız olabilir');
+    log('⚠ CAPTCHA tespit edildi');
     await sendTelegram(`⚠️ <b>ProPicks Cloud</b>\n\nCAPTCHA nedeniyle Investing.com girişi başarısız.\nManüel giriş gerekiyor.`);
     throw new Error('CAPTCHA bloğu');
   }
 
   // Giriş başarı kontrolü
   const url = page.url();
-  if (url.includes('/login') || url.includes('/register')) {
+  log(`  Giriş sonrası URL: ${url}`);
+  if (url.includes('/login') || url.includes('/register') || url.includes('/sign-in')) {
+    // Son bir deneme: farklı giriş URL'si
     throw new Error(`Giriş başarısız — hâlâ login sayfasında: ${url}`);
   }
 
