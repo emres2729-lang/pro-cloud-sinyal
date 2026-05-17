@@ -22,6 +22,9 @@ const CHAT  = process.env.TELEGRAM_CHAT_ID;
 const DRY   = process.argv.includes('--dry');
 
 const SEMBOLLER = [
+  // ── Kripto (7/24 açık) ─────────────────────────────────────────
+  { yahoo: 'BTC-USD',  isim: 'BTCUSD', tf: '1h',  range: '30d' },
+  { yahoo: 'ETH-USD',  isim: 'ETHUSD', tf: '1h',  range: '30d' },
   // ── Endeksler ──────────────────────────────────────────────────
   { yahoo: '^VIX',     isim: 'VIX',    tf: '1h',  range: '30d' },
   { yahoo: '^NDX',     isim: 'US100',  tf: '15m', range: '5d'  },
