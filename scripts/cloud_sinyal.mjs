@@ -23,10 +23,35 @@ const CHAT   = process.env.TELEGRAM_CHAT_ID;
 const DRY    = process.argv.includes('--dry');
 
 const SEMBOLLER = [
-  { yahoo: 'GC=F',      isim: 'XAUUSD', tf: '15m', range: '5d'  },
-  { yahoo: 'BTC-USD',   isim: 'BTCUSD', tf: '15m', range: '5d'  },
-  { yahoo: 'EURUSD=X',  isim: 'EURUSD', tf: '1h',  range: '10d' },
-  { yahoo: 'GBPUSD=X',  isim: 'GBPUSD', tf: '1h',  range: '10d' },
+  // ── Endeksler ──────────────────────────────────────────────────
+  { yahoo: '^VIX',     isim: 'VIX',    tf: '1h',  range: '10d' },
+  { yahoo: '^NDX',     isim: 'US100',  tf: '15m', range: '5d'  },
+  { yahoo: '^DJI',     isim: 'US30',   tf: '15m', range: '5d'  },
+  { yahoo: '^GSPC',    isim: 'SP500',  tf: '15m', range: '5d'  },
+  { yahoo: '^GDAXI',   isim: 'DE40',   tf: '15m', range: '5d'  },
+  { yahoo: 'XU100.IS', isim: 'XU100',  tf: '1h',  range: '10d' },
+  // ── Emtia ──────────────────────────────────────────────────────
+  { yahoo: 'GC=F',     isim: 'GOLD',   tf: '15m', range: '5d'  },
+  { yahoo: 'SI=F',     isim: 'SILVER', tf: '15m', range: '5d'  },
+  { yahoo: 'BZ=F',     isim: 'BRENT',  tf: '1h',  range: '10d' },
+  { yahoo: 'CL=F',     isim: 'USOIL',  tf: '15m', range: '5d'  },
+  // ── Forex ──────────────────────────────────────────────────────
+  { yahoo: 'EURUSD=X', isim: 'EURUSD', tf: '1h',  range: '10d' },
+  { yahoo: 'AUDCAD=X', isim: 'AUDCAD', tf: '1h',  range: '10d' },
+  { yahoo: 'USDJPY=X', isim: 'USDJPY', tf: '1h',  range: '10d' },
+  { yahoo: 'EURJPY=X', isim: 'EURJPY', tf: '1h',  range: '10d' },
+  { yahoo: 'USDCHF=X', isim: 'USDCHF', tf: '1h',  range: '10d' },
+  { yahoo: 'USDCAD=X', isim: 'USDCAD', tf: '1h',  range: '10d' },
+  { yahoo: 'CADCHF=X', isim: 'CADCHF', tf: '1h',  range: '10d' },
+  { yahoo: 'EURCAD=X', isim: 'EURCAD', tf: '1h',  range: '10d' },
+  { yahoo: 'EURGBP=X', isim: 'EURGBP', tf: '1h',  range: '10d' },
+  { yahoo: 'EURCHF=X', isim: 'EURCHF', tf: '1h',  range: '10d' },
+  { yahoo: 'GBPUSD=X', isim: 'GBPUSD', tf: '1h',  range: '10d' },
+  { yahoo: 'GBPAUD=X', isim: 'GBPAUD', tf: '1h',  range: '10d' },
+  { yahoo: 'GBPJPY=X', isim: 'GBPJPY', tf: '1h',  range: '10d' },
+  { yahoo: 'AUDUSD=X', isim: 'AUDUSD', tf: '1h',  range: '10d' },
+  { yahoo: 'GBPNZD=X', isim: 'GBPNZD', tf: '1h',  range: '10d' },
+  { yahoo: 'CHFJPY=X', isim: 'CHFJPY', tf: '1h',  range: '10d' },
 ];
 
 // ── STATE ────────────────────────────────────────────────────────
