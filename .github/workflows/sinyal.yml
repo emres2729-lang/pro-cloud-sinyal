@@ -17,15 +17,15 @@ jobs:
 
     steps:
       - name: Kodu al
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Node.js kur
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4.4.0
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: State dosyasını geri yükle
-        uses: actions/cache@v4
+        uses: actions/cache@v4.2.3
         with:
           path: data/cloud_state.json
           key: sinyal-state-${{ github.run_number }}
