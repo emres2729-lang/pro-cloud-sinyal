@@ -136,7 +136,7 @@ public:
       m_initialBalance  = AccountInfoDouble(ACCOUNT_BALANCE);
       m_peakEquity      = AccountInfoDouble(ACCOUNT_EQUITY);
       m_eaHalted = false;
-      NewDay(true);
+      NewDay();
    }
 
    bool Halted()       const { return m_eaHalted; }
@@ -149,7 +149,7 @@ public:
 
       // Gun degisimi
       datetime dk = DayKey(TimeCurrent());
-      if(dk != m_dayKey) NewDay(false);
+      if(dk != m_dayKey) NewDay();
 
       if(m_eaHalted) return;
 
@@ -179,7 +179,7 @@ public:
       }
    }
 
-   void NewDay(bool init)
+   void NewDay()
    {
       m_dayKey = DayKey(TimeCurrent());
       m_dayStartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
@@ -414,7 +414,6 @@ private:
    CRiskManager *m_risk;
    long   m_magic;
    double m_point; int m_digits;
-   datetime m_lastBar;
    // gun durumu
    datetime m_dayKey;
    bool   m_rangeReady,m_rangeValid,m_tradedToday;
@@ -435,7 +434,7 @@ public:
       m_trade.SetDeviationInPoints(20);
       m_trade.SetTypeFillingBySymbol(_Symbol);
       ResetDay();
-      m_activeTicket=0; m_pendingTicket=0; m_lastBar=0;
+      m_activeTicket=0; m_pendingTicket=0;
       return true;
    }
    void Deinit() { if(InpL_DrawRange) ObjectsDeleteAll(0,"PCAD_"); }
