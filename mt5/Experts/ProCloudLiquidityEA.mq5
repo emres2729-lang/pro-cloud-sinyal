@@ -26,8 +26,8 @@
 //+------------------------------------------------------------------+
 #property copyright "Pro Cloud Sinyal"
 #property link      "https://github.com/emres2729-lang/pro-cloud-sinyal"
-#property version   "2.10"
-#property description "Asya range likidite suzme + MSS teyidi + FVG limit girisi (XAUUSD). Prop-firm risk yonetimi."
+#property version   "3.00"
+#property description "Asya range + likidite suzme + MSS + FVG/OB konfluans + HTF miknatis + haber filtresi (XAUUSD)."
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -85,6 +85,21 @@ input bool     InpUseFVGEntry    = true;       // MSS sonrasi FVG'ye limit emirl
 input double   InpFVGFillRatio   = 0.5;        // FVG icinde giris: 0=proksimal(kolay) 0.5=orta(CE) 1=derin(en iyi fiyat)
 input double   InpFVGMinPoints    = 10;        // Min FVG boyu (puan) - cok kucuk bosluk sayilmaz
 input int      InpFVGExpiryBars   = 8;         // Limit emir bu kadar barda dolmazsa iptal
+
+input group "=== Order Block (OB) Konfluans ==="
+input bool     InpUseOrderBlock   = true;      // FVG'ye ek OB bolgesi kullan (konfluans/precision)
+
+input group "=== HTF FVG Miknatis Hedefi ==="
+input bool     InpUseHTF_Magnet   = false;     // Kosucu hedefini en yakin HTF FVG'ye tasi
+input ENUM_TIMEFRAMES InpMagnetTF = PERIOD_H1; // Miknatis zaman dilimi
+input int      InpMagnetLookback  = 60;        // HTF kac barda FVG aranir
+
+input group "=== Haber Filtresi (Ekonomik Takvim) ==="
+input bool     InpUseNewsFilter   = true;      // Yuksek etkili haberlerde islem durdur
+input string   InpNewsCurrency    = "USD";     // Hangi para birimi haberleri (altin = USD)
+input int      InpNewsBeforeMin   = 30;        // Haberden kac dk ONCE dur
+input int      InpNewsAfterMin    = 30;        // Haberden kac dk SONRA dur
+input bool     InpNewsHighOnly    = true;      // true: sadece yuksek etki; false: orta+yuksek
 
 input group "=== HTF Bias Filtresi ==="
 input ENUM_BIAS_FILTER InpBiasFilter = BIAS_OFF; // Trend yonu filtresi
@@ -247,6 +262,7 @@ void OnTick()
    if(g_activeTicket != 0 || g_pendingTicket != 0) return;
    if(InpOneTradePerDay && g_tradedToday) return;
    if(!SpreadFilterPass()) return;
+   if(!NewsFilterPass()) return;   // yuksek etkili haber penceresinde dur
 
    ProcessSweepStateMachine();
 }
@@ -399,13 +415,13 @@ void OpenTrade(int dir, double sl)
    if(dir > 0)
    {
       type = ORDER_TYPE_BUY; price = ask;
-      tp = InpUseRunner ? g_rh : g_eq;
+      tp = RunnerTarget(+1, price);
       if(price >= g_eq) { Print("AL atlandi: fiyat zaten EQ ustunde."); return; }
    }
    else
    {
       type = ORDER_TYPE_SELL; price = bid;
-      tp = InpUseRunner ? g_rl : g_eq;
+      tp = RunnerTarget(-1, price);
       if(price <= g_eq) { Print("SAT atlandi: fiyat zaten EQ altinda."); return; }
    }
    tp = NormalizeDouble(tp, g_digits);
@@ -450,38 +466,141 @@ ulong PositionLastTicket()
 //==================================================================//
 void EnterAfterMSS(int dir, double sl)
 {
+   double zTop, zBot;
+   if(ComputeEntryZone(dir, zTop, zBot))
+   {
+      // zTop = bolgenin ust kenari, zBot = alt kenar
+      double entry = (dir > 0)
+                     ? NormalizeDouble(zTop - (zTop - zBot) * InpFVGFillRatio, g_digits)  // long: proksimal=ust
+                     : NormalizeDouble(zBot + (zTop - zBot) * InpFVGFillRatio, g_digits); // short: proksimal=alt
+      if(PlaceFVGLimit(dir, entry, sl)) return;
+   }
+   // Gecerli bolge yok / limit kurulamadi -> market girisi
+   OpenTrade(dir, sl);
+}
+
+//------------------------------------------------------------------//
+// Giris bolgesi: FVG + OB konfluans. Ikisi de varsa kesisim (en kaliteli),
+// yoksa biri, hicbiri yoksa false (-> market).
+//------------------------------------------------------------------//
+bool ComputeEntryZone(int dir, double &zTop, double &zBot)
+{
+   bool hasFVG = false, hasOB = false;
+   double fTop=0, fBot=0, oTop=0, oBot=0;
+
+   double h1 = iHigh(_Symbol, _Period, 1);
+   double l1 = iLow (_Symbol, _Period, 1);
+   double h3 = iHigh(_Symbol, _Period, 3);
+   double l3 = iLow (_Symbol, _Period, 3);
+   double minGap = InpFVGMinPoints * g_point;
+
    if(InpUseFVGEntry)
    {
-      // Son 3 kapanan bar (1,2,3) icinde displacement FVG'si ara
-      double h1 = iHigh(_Symbol, _Period, 1);
-      double l1 = iLow (_Symbol, _Period, 1);
-      double h3 = iHigh(_Symbol, _Period, 3);
-      double l3 = iLow (_Symbol, _Period, 3);
-      double minGap = InpFVGMinPoints * g_point;
+      if(dir > 0 && l1 > h3 + minGap) { hasFVG = true; fTop = l1; fBot = h3; } // bogalı FVG
+      if(dir < 0 && h1 < l3 - minGap) { hasFVG = true; fTop = l3; fBot = h1; } // ayılı FVG
+   }
+   if(InpUseOrderBlock)
+      hasOB = FindOrderBlock(dir, oTop, oBot);
 
-      if(dir > 0)
+   if(hasFVG && hasOB)
+   {
+      double top = MathMin(fTop, oTop);
+      double bot = MathMax(fBot, oBot);
+      if(top > bot) { zTop = top; zBot = bot; Print("Giris bolgesi: FVG+OB KONFLUANS (kesisim)."); return true; }
+      // ortusme yok -> taze imbalance (FVG) tercih
+      zTop = fTop; zBot = fBot; return true;
+   }
+   if(hasFVG) { zTop = fTop; zBot = fBot; return true; }
+   if(hasOB)  { zTop = oTop; zBot = oBot; Print("Giris bolgesi: Order Block."); return true; }
+   return false;
+}
+
+//------------------------------------------------------------------//
+// Order Block: displacement oncesi son ters mum (long: son ayı, short: son boğa)
+//------------------------------------------------------------------//
+bool FindOrderBlock(int dir, double &top, double &bot)
+{
+   int maxLook = InpMSS_Lookback + InpConfirmWindowBars + 3;
+   for(int i = 2; i <= maxLook; i++)
+   {
+      double o = iOpen(_Symbol, _Period, i);
+      double c = iClose(_Symbol, _Period, i);
+      if(dir > 0 && c < o) { top = iHigh(_Symbol,_Period,i); bot = iLow(_Symbol,_Period,i); return true; }
+      if(dir < 0 && c > o) { top = iHigh(_Symbol,_Period,i); bot = iLow(_Symbol,_Period,i); return true; }
+   }
+   return false;
+}
+
+//------------------------------------------------------------------//
+// Kosucu hedefi: HTF FVG miknatisi aktifse en yakin uygun HTF bosluga tasi
+//------------------------------------------------------------------//
+double RunnerTarget(int dir, double entry)
+{
+   double def = (dir > 0) ? (InpUseRunner ? g_rh : g_eq) : (InpUseRunner ? g_rl : g_eq);
+   if(!(InpUseRunner && InpUseHTF_Magnet)) return def;
+
+   double m = FindHTF_Magnet(dir, entry);
+   if(m > 0)
+   {
+      if(dir > 0 && m > g_eq) return m;
+      if(dir < 0 && m < g_eq) return m;
+   }
+   return def;
+}
+
+double FindHTF_Magnet(int dir, double fromPrice)
+{
+   double best = 0, bestDist = DBL_MAX;
+   for(int i = 1; i <= InpMagnetLookback; i++)
+   {
+      double hiOld = iHigh(_Symbol, InpMagnetTF, i+1);
+      double loNew = iLow (_Symbol, InpMagnetTF, i-1);
+      double loOld = iLow (_Symbol, InpMagnetTF, i+1);
+      double hiNew = iHigh(_Symbol, InpMagnetTF, i-1);
+
+      if(dir > 0 && loNew > hiOld)            // bogalı HTF FVG -> yukari hedef
       {
-         // Bogalı FVG: low[1] > high[3] (orta bar displacement bosluk birakir)
-         if(l1 > h3 + minGap)
-         {
-            double top = l1, bottom = h3;     // FVG bolgesi [bottom, top]
-            double entry = NormalizeDouble(top - (top - bottom) * InpFVGFillRatio, g_digits);
-            if(PlaceFVGLimit(+1, entry, sl)) return;
-         }
+         double target = hiOld;               // proksimal kenar (ilk dokunulan)
+         if(target > fromPrice)
+         { double d = target - fromPrice; if(d < bestDist) { bestDist = d; best = target; } }
       }
-      else
+      if(dir < 0 && hiNew < loOld)            // ayılı HTF FVG -> asagi hedef
       {
-         // Ayılı FVG: high[1] < low[3]
-         if(h1 < l3 - minGap)
-         {
-            double bottom = h1, top = l3;
-            double entry = NormalizeDouble(bottom + (top - bottom) * InpFVGFillRatio, g_digits);
-            if(PlaceFVGLimit(-1, entry, sl)) return;
-         }
+         double target = loOld;
+         if(target < fromPrice)
+         { double d = fromPrice - target; if(d < bestDist) { bestDist = d; best = target; } }
       }
    }
-   // FVG yok / gecersiz / kapali -> market girisi
-   OpenTrade(dir, sl);
+   return best;
+}
+
+//------------------------------------------------------------------//
+// Haber filtresi: ekonomik takvimde yuksek etkili olay penceresinde dur.
+// NOT: Strateji Test Cihazi'nda takvim verisi yoktur -> tester'da pas gecer.
+//------------------------------------------------------------------//
+bool NewsFilterPass()
+{
+   if(!InpUseNewsFilter) return true;
+   if(MQLInfoInteger(MQL_TESTER)) return true; // tester'da calendar API calismaz
+
+   datetime now  = TimeCurrent();
+   datetime from = now - InpNewsAfterMin  * 60;
+   datetime to   = now + InpNewsBeforeMin * 60;
+
+   MqlCalendarValue values[];
+   int n = CalendarValueHistory(values, from, to, NULL, InpNewsCurrency);
+   if(n <= 0) return true;
+
+   ENUM_CALENDAR_EVENT_IMPORTANCE need = InpNewsHighOnly ? CALENDAR_IMPORTANCE_HIGH
+                                                         : CALENDAR_IMPORTANCE_MODERATE;
+   for(int i = 0; i < n; i++)
+   {
+      MqlCalendarEvent ev;
+      if(!CalendarEventById(values[i].event_id, ev)) continue;
+      if(ev.importance >= need)
+         return false; // haber penceresi -> islem yok
+   }
+   return true;
 }
 
 bool PlaceFVGLimit(int dir, double entry, double sl)
@@ -491,8 +610,7 @@ bool PlaceFVGLimit(int dir, double entry, double sl)
    long   stopLevel = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
    double minDist   = stopLevel * g_point;
 
-   double tp = (dir > 0) ? (InpUseRunner ? g_rh : g_eq) : (InpUseRunner ? g_rl : g_eq);
-   tp = NormalizeDouble(tp, g_digits);
+   double tp = NormalizeDouble(RunnerTarget(dir, entry), g_digits);
 
    double slDistPoints = MathAbs(entry - sl) / g_point;
    if(stopLevel > 0 && slDistPoints < stopLevel) return false;
