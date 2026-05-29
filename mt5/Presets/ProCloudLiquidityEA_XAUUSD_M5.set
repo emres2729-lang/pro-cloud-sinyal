@@ -1,0 +1,45 @@
+; ProCloudLiquidityEA v2 - XAUUSD M5 onerilen baslangic ayarlari
+; Asya range likidite suzme + MSS teyitli denge donusu (PROFESYONEL).
+; Saatler SUNUCU saatine goredir. Onerilen TF: M5 veya M15.
+; NOT: Altin 2 ondalikli ise 1$=100 puan. 3 ondalikli ise puan degerlerini x10 yapin.
+InpMagic=20260530
+InpComment=ProCloudLiq
+InpRiskPercent=1.0
+InpMaxDailyLossPct=4.0
+InpMaxTotalDDPct=10.0
+InpUseTrailingDD=false
+InpMaxSpreadPoints=60
+InpFixedLot=0.0
+InpRangeStartHour=2
+InpRangeEndHour=6
+InpTradeEndHour=12
+InpForceCloseHour=16
+InpMinRangePoints=150
+InpMaxRangePoints=2000
+InpEntryMode=1
+InpSweepMinPoints=20
+InpMSS_Lookback=3
+InpConfirmWindowBars=12
+InpSLBufferPoints=30
+InpUseFVGEntry=true
+InpFVGFillRatio=0.5
+InpFVGMinPoints=10
+InpFVGExpiryBars=8
+InpUseOrderBlock=true
+InpUseHTF_Magnet=false
+InpMagnetTF=16385
+InpMagnetLookback=60
+InpUseNewsFilter=true
+InpNewsCurrency=USD
+InpNewsBeforeMin=30
+InpNewsAfterMin=30
+InpNewsHighOnly=true
+InpBiasFilter=0
+InpBiasTF=16388
+InpBiasEMA=200
+InpUseRunner=true
+InpPartialPercent=50.0
+InpBE_AfterPartial=true
+InpBE_BufferPoints=10
+InpOneTradePerDay=true
+InpDrawRange=true

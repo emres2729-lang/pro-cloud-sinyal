@@ -1,0 +1,37 @@
+; ProCloudGoldEA - XAUUSD M15 onerilen baslangic ayarlari
+; MetaTrader 5 -> EA ayarlari penceresinde "Load" ile yukleyin.
+; NOT: Bu ayarlar baslangic noktasidir. Kendi broker'inizda backtest + optimize edin.
+InpMagic=20260529
+InpComment=ProCloudGold
+InpRiskPercent=1.0
+InpMaxDailyLossPct=4.0
+InpMaxTotalDDPct=10.0
+InpUseTrailingDD=false
+InpMaxPositions=1
+InpMaxSpreadPoints=60
+InpFixedLot=0.0
+InpTrendTF=16385
+InpTrendEMA=200
+InpTrendFastEMA=50
+InpFastEMA=21
+InpSlowEMA=50
+InpADXPeriod=14
+InpADXMin=22.0
+InpRSIPeriod=14
+InpRSIBuyMin=50.0
+InpRSISellMax=50.0
+InpATRPeriod=14
+InpSL_ATR_Mult=1.8
+InpTP_R_Mult=2.0
+InpATR_MinPoints=80
+InpATR_MaxPoints=1200
+InpUseBreakEven=true
+InpBreakEvenR=1.0
+InpBreakEvenBuffer=10
+InpUseTrailing=true
+InpTrail_ATR_Mult=2.0
+InpUseSession=true
+InpStartHour=8
+InpEndHour=21
+InpAvoidFriday=true
+InpFridayStopHour=19
