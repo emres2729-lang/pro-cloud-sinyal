@@ -48,8 +48,9 @@ input ENUM_REGIME_MODE InpRegimeMode = RM_AUTO; // Rejim secim modu
 input group "=== Rejim Tespiti ==="
 input ENUM_TIMEFRAMES InpRegimeTF = PERIOD_H1; // Rejim olcum zaman dilimi
 input int    InpRegimeADXPeriod = 14;      // Rejim ADX periyodu
-input double InpTrendADXMin   = 25.0;      // H1 ADX >= bu -> TREND rejimi
-input double InpRangeADXMax   = 20.0;      // H1 ADX <= bu -> RANGE rejimi
+input double InpTrendADXMin   = 23.0;      // H1 ADX >= bu -> TREND rejimi
+input double InpRangeADXMax   = 23.0;      // H1 ADX <= bu -> RANGE rejimi (esit = NEUTRAL olu bolge yok)
+input bool   InpDebugLog      = false;     // TESHIS: her barda neden islem acilmadigini logla
 
 input group "=== Ortak Risk (Prop-Firm) ==="
 input double InpRiskPercent   = 1.0;       // Islem basina risk (% bakiye)
@@ -79,7 +80,7 @@ input int    InpT_ATRPeriod  = 14;
 input double InpT_SL_ATR     = 1.8;
 input double InpT_TP_R       = 2.0;
 input double InpT_ATR_MinPts = 80;
-input double InpT_ATR_MaxPts = 1200;
+input double InpT_ATR_MaxPts = 6000;       // genis: yuksek fiyatli/volatil altin icin
 input bool   InpT_UseBE      = true;
 input double InpT_BE_R       = 1.0;
 input double InpT_BE_Buf     = 10;
@@ -94,7 +95,7 @@ input int    InpL_RangeEnd   = 6;
 input int    InpL_TradeEnd   = 12;
 input int    InpL_ForceClose = 16;
 input double InpL_MinRangePts = 150;
-input double InpL_MaxRangePts = 2000;
+input double InpL_MaxRangePts = 8000;      // genis: $4500 altinda gece range'i buyuk olabilir
 input ENUM_ENTRY_MODE InpL_EntryMode = ENTRY_MSS;
 input double InpL_SweepMinPts = 20;
 input int    InpL_MSS_Lookback = 3;
@@ -255,23 +256,26 @@ public:
 class CRegime
 {
 private:
-   int m_hADX;
+   int    m_hADX;
+   double m_lastADX;
 public:
    bool Init()
    {
       m_hADX = iADX(_Symbol, InpRegimeTF, InpRegimeADXPeriod);
+      m_lastADX = -1;
       return (m_hADX != INVALID_HANDLE);
    }
    void Deinit() { IndicatorRelease(m_hADX); }
+   double LastADX() const { return m_lastADX; }
 
    ENUM_REGIME Detect()
    {
       double adx[];
       ArraySetAsSeries(adx, true);
-      if(CopyBuffer(m_hADX, 0, 0, 2, adx) < 2) return REGIME_NEUTRAL;
-      double v = adx[1];
-      if(v >= InpTrendADXMin) return REGIME_TREND;
-      if(v <= InpRangeADXMax) return REGIME_RANGE;
+      if(CopyBuffer(m_hADX, 0, 0, 2, adx) < 2) { m_lastADX=-1; return REGIME_NEUTRAL; }
+      m_lastADX = adx[1];
+      if(m_lastADX >= InpTrendADXMin) return REGIME_TREND;
+      if(m_lastADX <= InpRangeADXMax) return REGIME_RANGE;
       return REGIME_NEUTRAL;
    }
 };
@@ -775,6 +779,17 @@ void OnTick()
          else if(g_curRegime==REGIME_RANGE) liqCanOpen=baseOK;
          // NEUTRAL -> ikisi de false
          break;
+   }
+
+   // TESHIS logu (sadece InpDebugLog=true iken)
+   if(InpDebugLog)
+   {
+      MqlDateTime t; TimeToStruct(TimeCurrent(),t);
+      PrintFormat("[DBG] %02d:%02d rejim=%s ADX(H1)=%.1f spread=%.0f | risk=%s news=%s expo=%s | trendIzin=%s liqIzin=%s",
+         t.hour, t.min, EnumToString(g_curRegime), g_regime.LastADX(),
+         (double)SymbolInfoInteger(_Symbol,SYMBOL_SPREAD),
+         (riskOK?"E":"H"), (newsOK?"E":"H"), (noExpo?"yok":"VAR"),
+         (trendCanOpen?"E":"H"), (liqCanOpen?"E":"H"));
    }
 
    // 6) Modulleri calistir (yeni bar)
