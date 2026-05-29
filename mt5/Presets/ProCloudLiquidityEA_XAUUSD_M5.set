@@ -1,12 +1,13 @@
-; ProCloudLiquidityEA - XAUUSD M5 onerilen baslangic ayarlari
-; Asya range likidite suzme + denge donusu stratejisi.
-; Saatler SUNUCU saatine goredir. Onerilen calisma zaman dilimi: M5 veya M15.
-; NOT: Altin 2 ondalikli ise 1$=100 puan. Broker 3 ondalikli gosteriyorsa
-;      MinRange/MaxRange/Sweep/SL/BE puan degerlerini x10 yapin.
+; ProCloudLiquidityEA v2 - XAUUSD M5 onerilen baslangic ayarlari
+; Asya range likidite suzme + MSS teyitli denge donusu (PROFESYONEL).
+; Saatler SUNUCU saatine goredir. Onerilen TF: M5 veya M15.
+; NOT: Altin 2 ondalikli ise 1$=100 puan. 3 ondalikli ise puan degerlerini x10 yapin.
 InpMagic=20260530
 InpComment=ProCloudLiq
 InpRiskPercent=1.0
 InpMaxDailyLossPct=4.0
+InpMaxTotalDDPct=10.0
+InpUseTrailingDD=false
 InpMaxSpreadPoints=60
 InpFixedLot=0.0
 InpRangeStartHour=2
@@ -15,9 +16,14 @@ InpTradeEndHour=12
 InpForceCloseHour=16
 InpMinRangePoints=150
 InpMaxRangePoints=2000
+InpEntryMode=1
 InpSweepMinPoints=20
-InpRequireCloseInside=true
+InpMSS_Lookback=3
+InpConfirmWindowBars=12
 InpSLBufferPoints=30
+InpBiasFilter=0
+InpBiasTF=16388
+InpBiasEMA=200
 InpUseRunner=true
 InpPartialPercent=50.0
 InpBE_AfterPartial=true

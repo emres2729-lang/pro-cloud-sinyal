@@ -34,9 +34,11 @@ input group "=== Genel ==="
 input long     InpMagic          = 20260529;   // Magic Number (her EA icin benzersiz)
 input string   InpComment        = "ProCloudGold"; // Islem yorumu
 
-input group "=== Risk Yonetimi ==="
+input group "=== Risk Yonetimi (Prop-Firm Seviyesi) ==="
 input double   InpRiskPercent    = 1.0;        // Islem basina risk (% bakiye)
 input double   InpMaxDailyLossPct= 4.0;        // Gunluk maks. zarar (%) -> islem durur
+input double   InpMaxTotalDDPct  = 10.0;       // TOPLAM maks. drawdown (%) -> EA KALICI durur
+input bool     InpUseTrailingDD  = false;      // true: max DD equity-zirvesinden olculur
 input int      InpMaxPositions   = 1;          // Ayni anda maks. pozisyon sayisi
 input double   InpMaxSpreadPoints= 60;         // Maks. izin verilen spread (puan)
 input double   InpFixedLot       = 0.0;        // >0 ise sabit lot kullanir (% risk yerine)
@@ -93,6 +95,9 @@ datetime g_lastBarTime = 0;      // yeni bar tespiti
 datetime g_dayStart    = 0;      // gunluk reset
 double   g_dayStartBalance = 0;  // gun basi bakiye
 bool     g_tradingHalted = false;// gunluk limit doldu mu
+double   g_initialBalance = 0;   // EA baslangic bakiyesi (toplam DD baseline)
+double   g_peakEquity     = 0;   // equity zirvesi (trailing DD)
+bool     g_eaHalted       = false;// toplam DD doldu -> kalici dur
 
 //==================================================================//
 //                            OnInit                                //
@@ -124,7 +129,10 @@ int OnInit()
       return(INIT_FAILED);
    }
 
-   // Gunluk takip baslat
+   // Risk takibi baslat
+   g_initialBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+   g_peakEquity     = AccountInfoDouble(ACCOUNT_EQUITY);
+   g_eaHalted       = false;
    ResetDailyTracking();
 
    PrintFormat("ProCloudGoldEA basladi | Sembol=%s | TF=%s | Risk=%.2f%% | GunlukLimit=%.2f%%",
@@ -155,11 +163,18 @@ void OnDeinit(const int reason)
 //==================================================================//
 void OnTick()
 {
+   // 0) Toplam drawdown korumasi (prop-firm seviyesi)
+   UpdateAccountDrawdownGuard();
+
    // 1) Gunluk reset / limit kontrolu
    HandleDailyRiskGuard();
 
    // 2) Acik pozisyonlari her tick yonet (trailing / break-even)
    ManageOpenPositions();
+
+   // Toplam DD dolduysa hicbir sey yapma
+   if(g_eaHalted)
+      return;
 
    // 3) Sadece YENI BAR acildiginda yeni sinyal ara (repaint/asiri islem onleme)
    datetime curBar = (datetime)iTime(_Symbol, _Period, 0);
@@ -429,6 +444,36 @@ void ManageOpenPositions()
          if(newSL > 0 && (curSL == 0 || newSL < curSL - g_point))
             trade.PositionModify(ticket, newSL, curTP);
       }
+   }
+}
+
+//==================================================================//
+//                  TOPLAM DRAWDOWN KORUMASI                        //
+//==================================================================//
+void UpdateAccountDrawdownGuard()
+{
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+   if(equity > g_peakEquity) g_peakEquity = equity;
+
+   if(g_eaHalted) return;
+
+   double baseline = InpUseTrailingDD ? g_peakEquity : g_initialBalance;
+   double ddLimit  = baseline * (1.0 - InpMaxTotalDDPct / 100.0);
+
+   if(equity <= ddLimit)
+   {
+      g_eaHalted = true;
+      for(int i = PositionsTotal()-1; i >= 0; i--)
+      {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket == 0) continue;
+         if(!posInfo.SelectByTicket(ticket)) continue;
+         if(posInfo.Symbol() == _Symbol && posInfo.Magic() == InpMagic)
+            trade.PositionClose(ticket);
+      }
+      PrintFormat("!!! TOPLAM DRAWDOWN LIMITI (%.1f%%) DOLDU. EA KALICI DURDU. Equity=%.2f Limit=%.2f",
+                  InpMaxTotalDDPct, equity, ddLimit);
+      Alert("ProCloudGoldEA: Toplam drawdown limiti doldu, EA durdu.");
    }
 }
 

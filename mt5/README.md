@@ -140,21 +140,29 @@ Senin fikrinden doğan strateji: **"Gece range'i + likidite süpürme → orta b
    - **RH** = pencerenin en yükseği (üst likidite)
    - **RL** = pencerenin en düşüğü (alt likidite)
    - **EQ** = (RH + RL) / 2 = orta band / denge
-2. **Likidite süpürme:** Trade penceresinde (range bitiminden `InpTradeEndHour`'a kadar) fiyat range dışına taşıp **likidite süzer**. Geçerli sinyal için:
-   - Fiyat level'i en az `InpSweepMinPoints` kadar geçmeli (gürültü filtresi)
-   - Gövde range içine geri kapanmalı (`InpRequireCloseInside` = reddetme teyidi)
-3. **Giriş:** Süpürme yönünün **tersine** girilir:
-   - Üst süpürüldü → **SAT** (SL süpürme fitilinin üstü, hedef EQ)
-   - Alt süpürüldü → **AL** (SL süpürme fitilinin altı, hedef EQ)
-4. **Yönetim (koşucu modu):** EQ'da pozisyonun `InpPartialPercent`'i kapatılır, stop BE'ye çekilir, kalan **karşı likiditeye** (RL/RH) taşınır.
-5. **Zaman stopu:** `InpForceCloseHour`'da açık pozisyon kapatılır (gece riski yok).
+2. **Likidite süpürme:** Trade penceresinde (range bitiminden `InpTradeEndHour`'a kadar) fiyat range dışına taşıp **likidite süzer** (`InpSweepMinPoints` kadar penetrasyon = gürültü filtresi).
+3. **MSS teyidi (PROFESYONEL ÇEKİRDEK):** ICT araştırmasının kritik bulgusu — **süpürme tek başına giriş sinyali değildir.** Süpürmeden sonra **Market Structure Shift (MSS / yapı kırılımı = CHoCH)** beklenir: fiyatın son `InpMSS_Lookback` barlık mikro yapıyı ters yönde kırması. Bu, "düşen bıçağı tutmayı" ciddi şekilde azaltır. (`InpEntryMode=ENTRY_MSS`)
+4. **Giriş:** MSS onayında süpürme yönünün **tersine** girilir:
+   - Üst süpürüldü + aşağı MSS → **SAT** (SL süpürme tepesinin üstü)
+   - Alt süpürüldü + yukarı MSS → **AL** (SL süpürme dibinin altı)
+5. **Yönetim (koşucu modu):** EQ'da pozisyonun `InpPartialPercent`'i kapatılır, stop BE'ye çekilir, kalan **karşı likiditeye** (RL/RH) taşınır.
+6. **Zaman stopu:** `InpForceCloseHour`'da açık pozisyon kapatılır (gece riski yok).
+
+### Giriş modları (`InpEntryMode`)
+
+| Mod | Davranış | Kime |
+|-----|----------|------|
+| `ENTRY_MSS` (önerilen) | Süpürme → **yapı kırılımı teyidi** → gir | Daha az ama daha kaliteli sinyal |
+| `ENTRY_IMMEDIATE` | Süpürme + içeri kapanış → anında gir | Agresif, daha çok sinyal |
 
 ### Profesyonel kurallar (yerleşik)
 
-- Süpürme + içeri kapanış teyidi → "düşen bıçağı tutmayı" önler
+- **MSS (yapı kırılımı) teyitli giriş** — araştırma temelli çekirdek
+- **HTF bias filtresi** (`InpBiasFilter=BIAS_HTF`): yalnızca üst zaman dilimi trendi yönünde fade
 - Stop manipülasyon fitilinin tam dışında (mantıklı invalidasyon)
 - **Günde tek setup** (`InpOneTradePerDay`) → aşırı işlem yok
-- **Range kalite filtresi**: çok küçük (gürültü) veya çok büyük (trend günü) range elenir
+- **Range kalite filtresi**: çok küçük (gürültü) / çok büyük (trend günü) range elenir
+- **Prop-firm seviyesi risk:** günlük zarar limiti + **toplam drawdown** (`InpMaxTotalDDPct`) dolunca EA **kalıcı durur** + opsiyonel equity-peak trailing
 - Range/RH/RL/EQ çizgileri grafiğe çizilir → görsel doğrulama
 
 ### Kurulum & test
@@ -171,14 +179,39 @@ Senin fikrinden doğan strateji: **"Gece range'i + likidite süpürme → orta b
 
 | Parametre | Varsayılan | Açıklama |
 |-----------|-----------|----------|
+| `InpEntryMode` | ENTRY_MSS | Giriş modu (MSS teyitli / Immediate) |
+| `InpMSS_Lookback` | 3 | MSS: kaç barlık mikro swing kırılmalı |
+| `InpConfirmWindowBars` | 12 | Süpürme sonrası MSS için maks. bekleme barı |
+| `InpBiasFilter` | BIAS_OFF | HTF trend filtresi (OFF / BIAS_HTF) |
 | `InpRangeStartHour` / `InpRangeEndHour` | 2 / 6 | Range penceresi (sunucu saati) |
 | `InpTradeEndHour` | 12 | Bu saatten sonra yeni setup aranmaz |
 | `InpForceCloseHour` | 16 | Zaman stopu — açık pozisyon kapatılır |
 | `InpSweepMinPoints` | 20 | Likidite için min penetrasyon |
-| `InpRequireCloseInside` | true | Reddetme teyidi (gövde içeri kapanış) |
 | `InpUseRunner` | true | EQ'da yarı kapa + koşucu |
 | `InpPartialPercent` | 50 | EQ'da kapatılacak yüzde |
 | `InpOneTradePerDay` | true | Günde tek setup |
+| `InpMaxTotalDDPct` | 10.0 | Toplam drawdown limiti → EA kalıcı durur |
+| `InpUseTrailingDD` | false | Max DD'yi equity zirvesinden ölç (prop-firm trailing) |
+
+---
+
+## Araştırma & metodoloji
+
+Bu EA'lar rastgele değil, kurumsal/ICT (Inner Circle Trader) ve prop-firm literatürüne dayanır:
+
+- **Asya Range & Likidite Süpürme:** Asya seansında oluşan range'in üst/alt likiditesi Londra/NY açılışında süpürülür ("Judas swing" / stop avı), ardından denge bölgesine dönüş eğilimi.
+- **Market Structure Shift (MSS / CHoCH):** ICT'nin temel kuralı — *"Süpürme tek başına giriş değildir; tetikleyici, süpürme sonrası mikro yapı kırılımıdır."* EA tam olarak bunu uygular.
+- **Prop-firm risk standardı:** Çoğu fon **günlük %4-5 + toplam %10 drawdown** uygular; ihlal = hesap iptali. EA'da günlük + toplam DD koruması ve opsiyonel equity-peak trailing bu standarda göre tasarlandı.
+
+**Kaynaklar:**
+- [ICT Asian Range — Session Times, Liquidity Sweep Strategy](https://innercircletrader.net/tutorials/ict-asian-range/)
+- [ICT Asian Session Liquidity Sweep Model](https://icttrading.org/ict-asian-session-liquidity-sweep-model/)
+- [ICT Fair Value Gap (FVG) — 6-Step Strategy](https://innercircletrader.net/tutorials/fair-value-gap-trading-strategy/)
+- [Master XAUUSD Order Blocks: Gold Trading with ICT Strategy (FXNX)](https://fxnx.com/en/blog/xauusd-order-blocks-gold-trading-ict-guide)
+- [MT5 Prop Firm EA Rules: Daily Loss, News, Lots (AlfaTactix)](https://alfatactix.com/academy/mql5-ea/ea-prop-firm-rules-mt5)
+- [Prop Firm Drawdown Rules Explained: Daily vs Max (ThinkCapital)](https://www.thinkcapital.com/prop-firm-drawdown-rules/)
+
+> **Gelecek adım (opsiyonel):** MSS sonrası oluşan **FVG (Fair Value Gap)** bölgesine limit emirle giriş — daha iyi fiyat/R:R. İstenirse eklenebilir.
 
 ---
 
