@@ -142,9 +142,10 @@ Senin fikrinden doğan strateji: **"Gece range'i + likidite süpürme → orta b
    - **EQ** = (RH + RL) / 2 = orta band / denge
 2. **Likidite süpürme:** Trade penceresinde (range bitiminden `InpTradeEndHour`'a kadar) fiyat range dışına taşıp **likidite süzer** (`InpSweepMinPoints` kadar penetrasyon = gürültü filtresi).
 3. **MSS teyidi (PROFESYONEL ÇEKİRDEK):** ICT araştırmasının kritik bulgusu — **süpürme tek başına giriş sinyali değildir.** Süpürmeden sonra **Market Structure Shift (MSS / yapı kırılımı = CHoCH)** beklenir: fiyatın son `InpMSS_Lookback` barlık mikro yapıyı ters yönde kırması. Bu, "düşen bıçağı tutmayı" ciddi şekilde azaltır. (`InpEntryMode=ENTRY_MSS`)
-4. **Giriş:** MSS onayında süpürme yönünün **tersine** girilir:
+4. **Giriş (FVG limit emri):** MSS onayında süpürme yönünün **tersine** girilir. `InpUseFVGEntry=true` ise EA, MSS'i oluşturan displacement'ın bıraktığı **FVG (Fair Value Gap / fiyat boşluğu)** bölgesine **limit emir** koyar — fiyat boşluğa geri çekilince daha iyi fiyattan girilir (ICT "mean threshold / consequent encroachment"). FVG yoksa veya fiyat geçmişse market emrine düşer.
    - Üst süpürüldü + aşağı MSS → **SAT** (SL süpürme tepesinin üstü)
    - Alt süpürüldü + yukarı MSS → **AL** (SL süpürme dibinin altı)
+   - Limit emir `InpFVGExpiryBars` bar içinde dolmazsa veya fiyat dolmadan EQ'ya ulaşırsa **iptal** edilir.
 5. **Yönetim (koşucu modu):** EQ'da pozisyonun `InpPartialPercent`'i kapatılır, stop BE'ye çekilir, kalan **karşı likiditeye** (RL/RH) taşınır.
 6. **Zaman stopu:** `InpForceCloseHour`'da açık pozisyon kapatılır (gece riski yok).
 
@@ -158,6 +159,7 @@ Senin fikrinden doğan strateji: **"Gece range'i + likidite süpürme → orta b
 ### Profesyonel kurallar (yerleşik)
 
 - **MSS (yapı kırılımı) teyitli giriş** — araştırma temelli çekirdek
+- **FVG (Fair Value Gap) limit girişi** — MSS displacement'ının bıraktığı boşluğa geri çekilmede daha iyi fiyat/R:R (`InpUseFVGEntry`, `InpFVGFillRatio`)
 - **HTF bias filtresi** (`InpBiasFilter=BIAS_HTF`): yalnızca üst zaman dilimi trendi yönünde fade
 - Stop manipülasyon fitilinin tam dışında (mantıklı invalidasyon)
 - **Günde tek setup** (`InpOneTradePerDay`) → aşırı işlem yok
@@ -182,6 +184,9 @@ Senin fikrinden doğan strateji: **"Gece range'i + likidite süpürme → orta b
 | `InpEntryMode` | ENTRY_MSS | Giriş modu (MSS teyitli / Immediate) |
 | `InpMSS_Lookback` | 3 | MSS: kaç barlık mikro swing kırılmalı |
 | `InpConfirmWindowBars` | 12 | Süpürme sonrası MSS için maks. bekleme barı |
+| `InpUseFVGEntry` | true | MSS sonrası FVG'ye limit emirle gir |
+| `InpFVGFillRatio` | 0.5 | FVG içinde giriş derinliği (0=proksimal, 0.5=orta/CE, 1=derin) |
+| `InpFVGExpiryBars` | 8 | Limit emir bu kadar barda dolmazsa iptal |
 | `InpBiasFilter` | BIAS_OFF | HTF trend filtresi (OFF / BIAS_HTF) |
 | `InpRangeStartHour` / `InpRangeEndHour` | 2 / 6 | Range penceresi (sunucu saati) |
 | `InpTradeEndHour` | 12 | Bu saatten sonra yeni setup aranmaz |
@@ -211,7 +216,9 @@ Bu EA'lar rastgele değil, kurumsal/ICT (Inner Circle Trader) ve prop-firm liter
 - [MT5 Prop Firm EA Rules: Daily Loss, News, Lots (AlfaTactix)](https://alfatactix.com/academy/mql5-ea/ea-prop-firm-rules-mt5)
 - [Prop Firm Drawdown Rules Explained: Daily vs Max (ThinkCapital)](https://www.thinkcapital.com/prop-firm-drawdown-rules/)
 
-> **Gelecek adım (opsiyonel):** MSS sonrası oluşan **FVG (Fair Value Gap)** bölgesine limit emirle giriş — daha iyi fiyat/R:R. İstenirse eklenebilir.
+> **Uygulandı:** Süpürme → MSS → **FVG limit girişi** zinciri tamamlandı (ICT modelinin tam hali).
+>
+> **Gelecek adımlar (opsiyonel):** order block (OB) entegrasyonu, HTF FVG mıknatıs hedefi, ekonomik takvim/haber filtresi.
 
 ---
 

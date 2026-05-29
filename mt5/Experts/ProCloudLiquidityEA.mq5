@@ -26,8 +26,8 @@
 //+------------------------------------------------------------------+
 #property copyright "Pro Cloud Sinyal"
 #property link      "https://github.com/emres2729-lang/pro-cloud-sinyal"
-#property version   "2.00"
-#property description "Asya range likidite suzme + MSS teyitli denge donusu EA (XAUUSD). Prop-firm risk yonetimi."
+#property version   "2.10"
+#property description "Asya range likidite suzme + MSS teyidi + FVG limit girisi (XAUUSD). Prop-firm risk yonetimi."
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -79,6 +79,12 @@ input double   InpSweepMinPoints = 20;         // Likidite icin min penetrasyon 
 input int      InpMSS_Lookback   = 3;          // MSS: kac barlik mikro swing kirilmali
 input int      InpConfirmWindowBars = 12;      // Suzme sonrasi MSS icin maks bekleme bari
 input double   InpSLBufferPoints = 30;         // SL, suzme fitilinin disinda buffer (puan)
+
+input group "=== FVG (Fair Value Gap) Girisi ==="
+input bool     InpUseFVGEntry    = true;       // MSS sonrasi FVG'ye limit emirle gir (yoksa market)
+input double   InpFVGFillRatio   = 0.5;        // FVG icinde giris: 0=proksimal(kolay) 0.5=orta(CE) 1=derin(en iyi fiyat)
+input double   InpFVGMinPoints    = 10;        // Min FVG boyu (puan) - cok kucuk bosluk sayilmaz
+input int      InpFVGExpiryBars   = 8;         // Limit emir bu kadar barda dolmazsa iptal
 
 input group "=== HTF Bias Filtresi ==="
 input ENUM_BIAS_FILTER InpBiasFilter = BIAS_OFF; // Trend yonu filtresi
@@ -136,6 +142,11 @@ ulong    g_activeTicket   = 0;
 int      g_activeDir      = 0;
 double   g_eqTarget       = 0;
 bool     g_partialDone    = false;
+
+// FVG bekleyen limit emir
+ulong    g_pendingTicket  = 0;
+int      g_pendingDir     = 0;
+int      g_pendingBars    = 0;
 
 //==================================================================//
 //                            OnInit                                //
@@ -200,8 +211,9 @@ void OnTick()
    // Gunluk zarar korumasi
    UpdateDailyRiskGuard();
 
-   // Acik pozisyon yonetimi + zaman stopu
+   // Acik pozisyon yonetimi + bekleyen emir + zaman stopu
    ManageActivePosition();
+   ManagePendingOrder();
    ForceCloseCheck();
 
    // Yeni bar mi?
@@ -216,11 +228,23 @@ void OnTick()
    if(!g_rangeReady && t.hour >= InpRangeEndHour)
       ComputeRange(today);
 
+   // Bekleyen FVG emri varsa: bar sayaci + sure asimi iptali
+   if(g_pendingTicket != 0)
+   {
+      g_pendingBars++;
+      if(g_pendingBars > InpFVGExpiryBars)
+      {
+         if(trade.OrderDelete(g_pendingTicket))
+            PrintFormat("FVG limit emri %d barda dolmadi -> iptal.", InpFVGExpiryBars);
+         ClearPending();
+      }
+   }
+
    // Genel kosullar
    if(g_eaHalted || g_tradingHalted) return;
    if(!g_rangeReady || !g_rangeValid) return;
    if(t.hour < InpRangeEndHour || t.hour >= InpTradeEndHour) return;
-   if(g_activeTicket != 0) return;
+   if(g_activeTicket != 0 || g_pendingTicket != 0) return;
    if(InpOneTradePerDay && g_tradedToday) return;
    if(!SpreadFilterPass()) return;
 
@@ -343,7 +367,7 @@ void ProcessSweepStateMachine()
          g_sweepState   = 0;
          double sl = NormalizeDouble(g_sweepExtreme - InpSLBufferPoints * g_point, g_digits);
          PrintFormat("MSS ONAY (long) | %.*f > mikroTepe %.*f | giriliyor.", g_digits, c1, g_digits, microHigh);
-         OpenTrade(+1, sl);
+         EnterAfterMSS(+1, sl);
       }
    }
    else // SHORT icin armed (ust suzuldu)
@@ -357,7 +381,7 @@ void ProcessSweepStateMachine()
          g_sweepState    = 0;
          double sl = NormalizeDouble(g_sweepExtreme + InpSLBufferPoints * g_point, g_digits);
          PrintFormat("MSS ONAY (short) | %.*f < mikroDip %.*f | giriliyor.", g_digits, c1, g_digits, microLow);
-         OpenTrade(-1, sl);
+         EnterAfterMSS(-1, sl);
       }
    }
 }
@@ -422,6 +446,127 @@ ulong PositionLastTicket()
 }
 
 //==================================================================//
+//             MSS SONRASI GIRIS: FVG LIMIT veya MARKET             //
+//==================================================================//
+void EnterAfterMSS(int dir, double sl)
+{
+   if(InpUseFVGEntry)
+   {
+      // Son 3 kapanan bar (1,2,3) icinde displacement FVG'si ara
+      double h1 = iHigh(_Symbol, _Period, 1);
+      double l1 = iLow (_Symbol, _Period, 1);
+      double h3 = iHigh(_Symbol, _Period, 3);
+      double l3 = iLow (_Symbol, _Period, 3);
+      double minGap = InpFVGMinPoints * g_point;
+
+      if(dir > 0)
+      {
+         // Bogalı FVG: low[1] > high[3] (orta bar displacement bosluk birakir)
+         if(l1 > h3 + minGap)
+         {
+            double top = l1, bottom = h3;     // FVG bolgesi [bottom, top]
+            double entry = NormalizeDouble(top - (top - bottom) * InpFVGFillRatio, g_digits);
+            if(PlaceFVGLimit(+1, entry, sl)) return;
+         }
+      }
+      else
+      {
+         // Ayılı FVG: high[1] < low[3]
+         if(h1 < l3 - minGap)
+         {
+            double bottom = h1, top = l3;
+            double entry = NormalizeDouble(bottom + (top - bottom) * InpFVGFillRatio, g_digits);
+            if(PlaceFVGLimit(-1, entry, sl)) return;
+         }
+      }
+   }
+   // FVG yok / gecersiz / kapali -> market girisi
+   OpenTrade(dir, sl);
+}
+
+bool PlaceFVGLimit(int dir, double entry, double sl)
+{
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   long   stopLevel = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   double minDist   = stopLevel * g_point;
+
+   double tp = (dir > 0) ? (InpUseRunner ? g_rh : g_eq) : (InpUseRunner ? g_rl : g_eq);
+   tp = NormalizeDouble(tp, g_digits);
+
+   double slDistPoints = MathAbs(entry - sl) / g_point;
+   if(stopLevel > 0 && slDistPoints < stopLevel) return false;
+
+   double lot = CalculateLot(slDistPoints);
+   if(lot <= 0) return false;
+
+   bool ok = false;
+   if(dir > 0)
+   {
+      if(entry >= ask - minDist) return false; // fiyat zaten FVG'yi gecmis -> market'e dus
+      ok = trade.BuyLimit(lot, entry, _Symbol, sl, tp, ORDER_TIME_GTC, 0, InpComment);
+   }
+   else
+   {
+      if(entry <= bid + minDist) return false;
+      ok = trade.SellLimit(lot, entry, _Symbol, sl, tp, ORDER_TIME_GTC, 0, InpComment);
+   }
+
+   if(ok)
+   {
+      g_pendingTicket = trade.ResultOrder();
+      g_pendingDir    = dir;
+      g_pendingBars   = 0;
+      PrintFormat("FVG LIMIT EMRI | %s LIMIT | giris=%.*f | SL=%.*f | TP=%.*f | lot=%.2f",
+                  (dir>0?"BUY":"SELL"), g_digits, entry, g_digits, sl, g_digits, tp, lot);
+      return true;
+   }
+   PrintFormat("FVG limit kurulamadi (retcode=%d) -> market'e dusuluyor.", trade.ResultRetcode());
+   return false;
+}
+
+void ManagePendingOrder()
+{
+   if(g_pendingTicket == 0) return;
+
+   // Hala bekleyen emir mi?
+   if(OrderSelect(g_pendingTicket))
+   {
+      // Setup gecersizlesti mi? Fiyat fill olmadan EQ'ya ulastiysa hareketi kacirdik -> iptal
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      bool eqReached = (g_pendingDir > 0) ? (bid >= g_eq) : (ask <= g_eq);
+      if(eqReached)
+      {
+         if(trade.OrderDelete(g_pendingTicket))
+            Print("FVG limit iptal: fiyat dolmadan EQ'ya ulasti (hareket kacti).");
+         ClearPending();
+      }
+      return;
+   }
+
+   // Emir havuzda yok -> ya doldu (pozisyon) ya silindi
+   ulong posT = PositionLastTicket();
+   if(posT != 0 && g_activeTicket == 0)
+   {
+      g_activeTicket = posT;
+      g_activeDir    = g_pendingDir;
+      g_eqTarget     = g_eq;
+      g_partialDone  = false;
+      g_tradedToday  = true;
+      Print("FVG LIMIT DOLDU -> pozisyon aktif, yonetim devrede.");
+   }
+   ClearPending();
+}
+
+void ClearPending()
+{
+   g_pendingTicket = 0;
+   g_pendingDir    = 0;
+   g_pendingBars   = 0;
+}
+
+//==================================================================//
 //                   AKTIF POZISYON YONETIMI                        //
 //==================================================================//
 void ManageActivePosition()
@@ -470,6 +615,13 @@ void ForceCloseCheck()
 {
    MqlDateTime t; TimeToStruct(TimeCurrent(), t);
    if(t.hour < InpForceCloseHour) return;
+
+   // Bekleyen emir varsa iptal
+   if(g_pendingTicket != 0)
+   {
+      trade.OrderDelete(g_pendingTicket);
+      ClearPending();
+   }
 
    for(int i = PositionsTotal()-1; i >= 0; i--)
    {
@@ -536,6 +688,8 @@ void UpdateAccountDrawdownGuard()
    if(equity <= ddLimit)
    {
       g_eaHalted = true;
+      // Bekleyen emri iptal et
+      if(g_pendingTicket != 0) { trade.OrderDelete(g_pendingTicket); ClearPending(); }
       // Guvenlik icin acik pozisyonlari kapat
       for(int i = PositionsTotal()-1; i >= 0; i--)
       {
