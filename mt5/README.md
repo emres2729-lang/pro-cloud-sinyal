@@ -1,4 +1,17 @@
-# ProCloudGoldEA — MetaTrader 5 Otomatik Al-Sat Robotu (XAUUSD / Altın)
+# Pro Cloud Sinyal — MetaTrader 5 Otomatik Al-Sat Robotları (XAUUSD / Altın)
+
+Bu klasörde iki adet birbirini tamamlayan MQL5 Expert Advisor bulunur:
+
+| EA | Strateji | Piyasa rejimi | Önerilen TF |
+|----|----------|---------------|-------------|
+| **ProCloudGoldEA** | Çok katmanlı trend-pullback | Trend günleri | M15 |
+| **ProCloudLiquidityEA** | Asya range likidite süpürme → denge dönüşü | Range/dengeli günler | M5 / M15 |
+
+> İkisi farklı piyasa koşullarında çalışır. **Farklı `Magic Number` ile** ayrı grafiklerde aynı anda çalıştırılabilirler.
+
+---
+
+# 1) ProCloudGoldEA — Trend-Pullback Robotu
 
 Çok katmanlı **trend-pullback (geri çekilme)** stratejisi + sıkı risk yönetimi ile altın (XAUUSD) için tasarlanmış MQL5 Expert Advisor.
 
@@ -115,13 +128,69 @@ Strateji Test Cihazı'nda **Optimization** sekmesinden şu parametreleri tara:
 
 ---
 
+---
+
+# 2) ProCloudLiquidityEA — Asya Range Likidite Süpürme Robotu
+
+Senin fikrinden doğan strateji: **"Gece range'i + likidite süpürme → orta band (denge) dönüşü"** — kurumsal trader'ların kullandığı mean-reversion modeli.
+
+### Nasıl çalışır?
+
+1. **Range oluşumu:** Gece penceresinde (varsayılan **02:00–06:00 sunucu saati**) range hesaplanır:
+   - **RH** = pencerenin en yükseği (üst likidite)
+   - **RL** = pencerenin en düşüğü (alt likidite)
+   - **EQ** = (RH + RL) / 2 = orta band / denge
+2. **Likidite süpürme:** Trade penceresinde (range bitiminden `InpTradeEndHour`'a kadar) fiyat range dışına taşıp **likidite süzer**. Geçerli sinyal için:
+   - Fiyat level'i en az `InpSweepMinPoints` kadar geçmeli (gürültü filtresi)
+   - Gövde range içine geri kapanmalı (`InpRequireCloseInside` = reddetme teyidi)
+3. **Giriş:** Süpürme yönünün **tersine** girilir:
+   - Üst süpürüldü → **SAT** (SL süpürme fitilinin üstü, hedef EQ)
+   - Alt süpürüldü → **AL** (SL süpürme fitilinin altı, hedef EQ)
+4. **Yönetim (koşucu modu):** EQ'da pozisyonun `InpPartialPercent`'i kapatılır, stop BE'ye çekilir, kalan **karşı likiditeye** (RL/RH) taşınır.
+5. **Zaman stopu:** `InpForceCloseHour`'da açık pozisyon kapatılır (gece riski yok).
+
+### Profesyonel kurallar (yerleşik)
+
+- Süpürme + içeri kapanış teyidi → "düşen bıçağı tutmayı" önler
+- Stop manipülasyon fitilinin tam dışında (mantıklı invalidasyon)
+- **Günde tek setup** (`InpOneTradePerDay`) → aşırı işlem yok
+- **Range kalite filtresi**: çok küçük (gürültü) veya çok büyük (trend günü) range elenir
+- Range/RH/RL/EQ çizgileri grafiğe çizilir → görsel doğrulama
+
+### Kurulum & test
+
+`ProCloudLiquidityEA.mq5`'i `MQL5/Experts/` klasörüne kopyala, derle (F7), **XAUUSD M5/M15** grafiğine sürükle, `ProCloudLiquidityEA_XAUUSD_M5.set` presetini yükle. Backtest'i "her tik" modeliyle yap.
+
+> ⚠️ **Sunucu saati:** `02:00–06:00` MT5 **sunucu saatidir**, yerel saatin değil. Sunucu saatini öğrenmek için grafikteki son bar'ın saatine bak veya **Market Watch** üzerinde sembolün saatini kontrol et. Türkiye (GMT+3) ile broker'ın (genelde GMT+2/+3) arasında 0-1 saat fark olabilir; saatleri ona göre kaydır.
+
+> ⚠️ **Puan/ondalık uyarısı:** Varsayılan puan değerleri (MinRange=150, Sweep=20, SL buffer=30) altının **2 ondalıklı** (1$ = 100 puan) gösterildiğini varsayar. Broker'ın altını **3 ondalıklı** gösteriyorsa bu değerleri **×10** yap.
+
+> ⚠️ **Küçük hesap notu:** Risk yüzdesinden hesaplanan lot, broker'ın minimum lotunun (0.01) altına düşerse EA o işlemi **açmaz** (riski aşmamak için). Çok küçük hesapta işlem görmüyorsan `InpRiskPercent`'i artır veya `InpFixedLot` kullan.
+
+### Önemli parametreler
+
+| Parametre | Varsayılan | Açıklama |
+|-----------|-----------|----------|
+| `InpRangeStartHour` / `InpRangeEndHour` | 2 / 6 | Range penceresi (sunucu saati) |
+| `InpTradeEndHour` | 12 | Bu saatten sonra yeni setup aranmaz |
+| `InpForceCloseHour` | 16 | Zaman stopu — açık pozisyon kapatılır |
+| `InpSweepMinPoints` | 20 | Likidite için min penetrasyon |
+| `InpRequireCloseInside` | true | Reddetme teyidi (gövde içeri kapanış) |
+| `InpUseRunner` | true | EQ'da yarı kapa + koşucu |
+| `InpPartialPercent` | 50 | EQ'da kapatılacak yüzde |
+| `InpOneTradePerDay` | true | Günde tek setup |
+
+---
+
 ## Dosya yapısı
 
 ```
 mt5/
 ├── Experts/
-│   └── ProCloudGoldEA.mq5          # Ana EA (tek dosya, kendi kendine yeterli)
+│   ├── ProCloudGoldEA.mq5             # Trend-pullback EA
+│   └── ProCloudLiquidityEA.mq5        # Asya range likidite süpürme EA
 ├── Presets/
-│   └── ProCloudGoldEA_XAUUSD_M15.set  # Önerilen başlangıç ayarları
-└── README.md                        # Bu dosya
+│   ├── ProCloudGoldEA_XAUUSD_M15.set
+│   └── ProCloudLiquidityEA_XAUUSD_M5.set
+└── README.md                          # Bu dosya
 ```
