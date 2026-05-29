@@ -6,8 +6,9 @@ Bu klasörde iki adet birbirini tamamlayan MQL5 Expert Advisor bulunur:
 |----|----------|---------------|-------------|
 | **ProCloudGoldEA** | Çok katmanlı trend-pullback | Trend günleri | M15 |
 | **ProCloudLiquidityEA** | Asya range likidite süpürme → denge dönüşü | Range/dengeli günler | M5 / M15 |
+| **ProCloudAdaptiveEA** | İkisini birleştiren **rejim-adaptif portföy yöneticisi** | Otomatik seçim | M15 |
 
-> İkisi farklı piyasa koşullarında çalışır. **Farklı `Magic Number` ile** ayrı grafiklerde aynı anda çalıştırılabilirler.
+> İlk ikisi tek strateji çalıştırır. **ProCloudAdaptiveEA** ise her ikisini tek çatıda toplar, piyasa rejimini (trend/range) ölçüp uygun stratejiye işlem açma izni verir. **Tek başına bunu çalıştırmak en pratik seçenektir.**
 
 ---
 
@@ -229,15 +230,55 @@ Bu EA'lar rastgele değil, kurumsal/ICT (Inner Circle Trader) ve prop-firm liter
 
 ---
 
+---
+
+# 3) ProCloudAdaptiveEA — Rejim-Adaptif Portföy Yöneticisi
+
+İki stratejiyi **tek EA'da** birleştirir ve piyasa rejimine göre hangisinin işlem açabileceğini otomatik seçer.
+
+### Mantık
+
+1. **Rejim tespiti:** Üst zaman diliminde (varsayılan H1) ADX ölçülür:
+   - `H1 ADX ≥ InpTrendADXMin` (25) → **TREND rejimi** → Trend-Pullback stratejisi işlem açabilir
+   - `H1 ADX ≤ InpRangeADXMax` (20) → **RANGE rejimi** → Likidite-Süpürme stratejisi işlem açabilir
+   - Arası → **NEUTRAL** → (AUTO modda) yeni işlem yok
+2. **Ortak risk yönetimi:** Tek `CRiskManager` her iki stratejiyi yönetir — günlük + toplam drawdown, % risk lot, spread ve haber filtresi hepsinde geçerli.
+3. **Tek pozisyon kuralı:** Aynı anda yalnızca bir strateji pozisyon taşır (çift maruziyet önlenir). Açık pozisyonlar rejim değişse bile kendi stratejisince yönetilmeye devam eder.
+
+### Rejim modu (`InpRegimeMode`)
+
+| Mod | Davranış |
+|-----|----------|
+| `RM_AUTO` (önerilen) | Rejime göre otomatik seçim |
+| `RM_FORCE_TREND` | Sadece trend stratejisi |
+| `RM_FORCE_RANGE` | Sadece likidite stratejisi |
+| `RM_BOTH` | İkisi de açabilir (yine tek pozisyon kuralı) |
+
+### Kurulum
+
+`ProCloudAdaptiveEA.mq5`'i `MQL5/Experts/`'e kopyala, derle (F7), **XAUUSD M15** grafiğine ekle, `ProCloudAdaptiveEA_XAUUSD_M15.set` presetini yükle. İki alt strateji ayrı magic number kullanır (`InpMagicTrend`, `InpMagicLiq`).
+
+> **Not:** Adaptif EA tek grafik = tek zaman dilimi çalışır (M15 önerilir). Tek strateji daha ince ayar istiyorsan ilk iki EA'yı ayrı grafiklerde kullan.
+
+---
+
 ## Dosya yapısı
 
 ```
 mt5/
 ├── Experts/
 │   ├── ProCloudGoldEA.mq5             # Trend-pullback EA
-│   └── ProCloudLiquidityEA.mq5        # Asya range likidite süpürme EA
+│   ├── ProCloudLiquidityEA.mq5        # Asya range likidite süpürme EA
+│   └── ProCloudAdaptiveEA.mq5         # Rejim-adaptif portföy yöneticisi (ikisi bir arada)
 ├── Presets/
 │   ├── ProCloudGoldEA_XAUUSD_M15.set
-│   └── ProCloudLiquidityEA_XAUUSD_M5.set
+│   ├── ProCloudLiquidityEA_XAUUSD_M5.set
+│   └── ProCloudAdaptiveEA_XAUUSD_M15.set
 └── README.md                          # Bu dosya
 ```
+
+---
+
+## ⚠️ Derleme durumu
+
+Bu repodaki `.mq5` dosyaları **MetaEditor ile derlenmemiştir** — MQL5 derleyicisi yalnızca MetaTrader 5 (MetaEditor / Windows) içinde çalışır. Kodlar elle yapısal kontrolden geçti (sözdizimi, parantez/blok dengesi, MQL5 API imzaları) ancak **gerçek derleme senin tarafında yapılmalıdır:** MetaEditor'da dosyayı aç → **F7**. Derleme hatası çıkarsa hata mesajını paylaş, düzelteyim.
