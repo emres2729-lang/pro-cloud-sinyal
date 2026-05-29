@@ -51,6 +51,7 @@ input int    InpRegimeADXPeriod = 14;      // Rejim ADX periyodu
 input double InpTrendADXMin   = 23.0;      // H1 ADX >= bu -> TREND rejimi
 input double InpRangeADXMax   = 23.0;      // H1 ADX <= bu -> RANGE rejimi (esit = NEUTRAL olu bolge yok)
 input bool   InpDebugLog      = false;     // TESHIS: her barda neden islem acilmadigini logla
+input bool   InpShowVisuals   = true;      // GORSEL: range, suzme, MSS, giris, bolge ciz
 
 input group "=== Ortak Risk (Prop-Firm) ==="
 input double InpRiskPercent   = 1.0;       // Islem basina risk (% bakiye)
@@ -114,6 +115,44 @@ input double InpL_PartialPct = 50.0;
 input bool   InpL_BE_After   = true;
 input double InpL_BE_Buf     = 10;
 input bool   InpL_DrawRange  = true;
+
+//==================================================================//
+//                      GORSEL CIZIM YARDIMCILARI                   //
+//==================================================================//
+void V_Seg(string n,datetime t1,double p1,datetime t2,double p2,color c,int style,int w)
+{
+   if(!InpShowVisuals) return;
+   if(ObjectFind(0,n)<0) ObjectCreate(0,n,OBJ_TREND,0,t1,p1,t2,p2);
+   else { ObjectMove(0,n,0,t1,p1); ObjectMove(0,n,1,t2,p2); }
+   ObjectSetInteger(0,n,OBJPROP_COLOR,c); ObjectSetInteger(0,n,OBJPROP_STYLE,style);
+   ObjectSetInteger(0,n,OBJPROP_WIDTH,w); ObjectSetInteger(0,n,OBJPROP_RAY_RIGHT,false);
+   ObjectSetInteger(0,n,OBJPROP_BACK,true); ObjectSetInteger(0,n,OBJPROP_SELECTABLE,false);
+}
+void V_Box(string n,datetime t1,double p1,datetime t2,double p2,color c)
+{
+   if(!InpShowVisuals) return;
+   if(ObjectFind(0,n)<0) ObjectCreate(0,n,OBJ_RECTANGLE,0,t1,p1,t2,p2);
+   else { ObjectMove(0,n,0,t1,p1); ObjectMove(0,n,1,t2,p2); }
+   ObjectSetInteger(0,n,OBJPROP_COLOR,c); ObjectSetInteger(0,n,OBJPROP_BACK,true);
+   ObjectSetInteger(0,n,OBJPROP_FILL,true); ObjectSetInteger(0,n,OBJPROP_SELECTABLE,false);
+}
+void V_Arrow(string n,datetime t,double price,int code,color c)
+{
+   if(!InpShowVisuals) return;
+   if(ObjectFind(0,n)<0) ObjectCreate(0,n,OBJ_ARROW,0,t,price);
+   else ObjectMove(0,n,0,t,price);
+   ObjectSetInteger(0,n,OBJPROP_ARROWCODE,code); ObjectSetInteger(0,n,OBJPROP_COLOR,c);
+   ObjectSetInteger(0,n,OBJPROP_WIDTH,2); ObjectSetInteger(0,n,OBJPROP_SELECTABLE,false);
+}
+void V_Text(string n,datetime t,double price,string txt,color c)
+{
+   if(!InpShowVisuals) return;
+   if(ObjectFind(0,n)<0) ObjectCreate(0,n,OBJ_TEXT,0,t,price);
+   else ObjectMove(0,n,0,t,price);
+   ObjectSetString(0,n,OBJPROP_TEXT," "+txt); ObjectSetInteger(0,n,OBJPROP_COLOR,c);
+   ObjectSetInteger(0,n,OBJPROP_FONTSIZE,9); ObjectSetInteger(0,n,OBJPROP_SELECTABLE,false);
+}
+string V_Tag(datetime t){ return IntegerToString((long)t); }
 
 //==================================================================//
 //                         RISK MANAGER                             //
@@ -403,7 +442,12 @@ private:
       if(stopLvl>0 && slPts<stopLvl) return;
       double lot=m_risk.CalcLot(slPts); if(lot<=0) return;
       if(m_trade.PositionOpen(_Symbol,type,lot,price,sl,tp,"PCAdaptive-Trend"))
+      {
+         datetime tt=iTime(_Symbol,_Period,0); string tag=V_Tag(tt);
+         if(sig>0){ V_Arrow("PCAD_TB_"+tag,tt,price,225,clrSpringGreen); V_Text("PCAD_TBX_"+tag,tt,price,"TREND AL",clrSpringGreen); }
+         else     { V_Arrow("PCAD_TS_"+tag,tt,price,226,clrOrangeRed);  V_Text("PCAD_TSX_"+tag,tt,price,"TREND SAT",clrOrangeRed); }
          PrintFormat("[TREND] %s acildi lot=%.2f SL=%.*f TP=%.*f",(sig>0?"AL":"SAT"),lot,m_digits,sl,m_digits,tp);
+      }
    }
 };
 
@@ -441,7 +485,7 @@ public:
       m_activeTicket=0; m_pendingTicket=0;
       return true;
    }
-   void Deinit() { if(InpL_DrawRange) ObjectsDeleteAll(0,"PCAD_"); }
+   void Deinit() { /* gorseller bilerek silinmez: test/grafik sonrasi gorulebilsin */ }
 
    // Her tick: pending + pozisyon + zaman stopu
    void ManageTick()
@@ -503,7 +547,7 @@ private:
       m_rangeValid=(rp>=InpL_MinRangePts && rp<=InpL_MaxRangePts);
       PrintFormat("[LIQ] RANGE RH=%.*f RL=%.*f EQ=%.*f (%.0f puan) gecerli=%s",
                   m_digits,rh,m_digits,rl,m_digits,m_eq,rp,(m_rangeValid?"E":"H"));
-      if(InpL_DrawRange&&m_rangeValid) DrawRange(today);
+      if(InpL_DrawRange) DrawRange(today);
    }
 
    void ProcessSweep()
@@ -516,14 +560,19 @@ private:
       {
          bool hs=(h1>m_rh+buf)&&!m_sweptHigh;
          bool ls=(l1<m_rl-buf)&&!m_sweptLow;
+         datetime tt=iTime(_Symbol,_Period,1);
          if(hs)
          {
+            V_Arrow("PCAD_SW_"+V_Tag(tt),tt,h1,159,clrOrange);
+            V_Text ("PCAD_SWX_"+V_Tag(tt),tt,h1,"SWEEP",clrOrange);
             if(InpL_EntryMode==ENTRY_IMMEDIATE){ if(c1<m_rh){ m_sweptHigh=true; EnterAfterMSS(-1,NormalizeDouble(h1+InpL_SLBufferPts*m_point,m_digits)); } }
             else { m_sweepState=-1; m_sweepExtreme=h1; m_armBars=0; PrintFormat("[LIQ] ust suzme, MSS bekleniyor"); }
             return;
          }
          if(ls)
          {
+            V_Arrow("PCAD_SW_"+V_Tag(tt),tt,l1,159,clrOrange);
+            V_Text ("PCAD_SWX_"+V_Tag(tt),tt,l1,"SWEEP",clrOrange);
             if(InpL_EntryMode==ENTRY_IMMEDIATE){ if(c1>m_rl){ m_sweptLow=true; EnterAfterMSS(+1,NormalizeDouble(l1-InpL_SLBufferPts*m_point,m_digits)); } }
             else { m_sweepState=1; m_sweepExtreme=l1; m_armBars=0; PrintFormat("[LIQ] alt suzme, MSS bekleniyor"); }
             return;
@@ -534,17 +583,18 @@ private:
       m_armBars++;
       if(m_armBars>InpL_ConfirmBars){ if(m_sweepState>0)m_sweptLow=true; else m_sweptHigh=true; m_sweepState=0; return; }
 
+      datetime tc=iTime(_Symbol,_Period,1);
       if(m_sweepState>0)
       {
          if(l1<m_sweepExtreme){ m_sweepExtreme=l1; m_armBars=0; }
          double mh=HH(2,InpL_MSS_Lookback);
-         if(c1>mh && c1>o1){ m_sweptLow=true; m_sweepState=0; EnterAfterMSS(+1,NormalizeDouble(m_sweepExtreme-InpL_SLBufferPts*m_point,m_digits)); }
+         if(c1>mh && c1>o1){ V_Text("PCAD_MSS_"+V_Tag(tc),tc,c1,"MSS",clrAqua); m_sweptLow=true; m_sweepState=0; EnterAfterMSS(+1,NormalizeDouble(m_sweepExtreme-InpL_SLBufferPts*m_point,m_digits)); }
       }
       else
       {
          if(h1>m_sweepExtreme){ m_sweepExtreme=h1; m_armBars=0; }
          double ml=LL(2,InpL_MSS_Lookback);
-         if(c1<ml && c1<o1){ m_sweptHigh=true; m_sweepState=0; EnterAfterMSS(-1,NormalizeDouble(m_sweepExtreme+InpL_SLBufferPts*m_point,m_digits)); }
+         if(c1<ml && c1<o1){ V_Text("PCAD_MSS_"+V_Tag(tc),tc,c1,"MSS",clrAqua); m_sweptHigh=true; m_sweepState=0; EnterAfterMSS(-1,NormalizeDouble(m_sweepExtreme+InpL_SLBufferPts*m_point,m_digits)); }
       }
    }
 
@@ -553,6 +603,8 @@ private:
       double zt,zb;
       if(ZoneFVG_OB(dir,zt,zb))
       {
+         datetime tz=iTime(_Symbol,_Period,1);
+         V_Box("PCAD_ZONE_"+V_Tag(tz),tz,zt,tz+InpL_FVGExpiry*PeriodSeconds(),zb,clrTeal);
          double entry=(dir>0)?NormalizeDouble(zt-(zt-zb)*InpL_FVGFillRatio,m_digits)
                              :NormalizeDouble(zb+(zt-zb)*InpL_FVGFillRatio,m_digits);
          if(PlaceLimit(dir,entry,sl)) return;
@@ -622,6 +674,7 @@ private:
       if(dir>0){ if(entry>=ask-minD) return false; ok=m_trade.BuyLimit(lot,entry,_Symbol,sl,tp,ORDER_TIME_GTC,0,"PCAdaptive-Liq"); }
       else     { if(entry<=bid+minD) return false; ok=m_trade.SellLimit(lot,entry,_Symbol,sl,tp,ORDER_TIME_GTC,0,"PCAdaptive-Liq"); }
       if(ok){ m_pendingTicket=m_trade.ResultOrder(); m_pendingDir=dir; m_pendingBars=0;
+              DrawEntry(dir,entry,"LIQ-LIMIT");
               PrintFormat("[LIQ] FVG/OB limit %s @%.*f",(dir>0?"BUY":"SELL"),m_digits,entry); return true; }
       return false;
    }
@@ -639,6 +692,7 @@ private:
       double lot=m_risk.CalcLot(slPts); if(lot<=0) return;
       if(m_trade.PositionOpen(_Symbol,type,lot,price,sl,tp,"PCAdaptive-Liq"))
       { m_activeTicket=LastTicket(); m_activeDir=dir; m_eqTarget=m_eq; m_partialDone=false; m_tradedToday=true;
+        DrawEntry(dir,price,"LIQ-MKT");
         PrintFormat("[LIQ] %s market acildi lot=%.2f",(dir>0?"AL":"SAT"),lot); }
    }
 
@@ -704,16 +758,28 @@ private:
 
    void DrawRange(datetime today)
    {
-      ObjectsDeleteAll(0,"PCAD_");
+      string ds=TimeToString(today,TIME_DATE);
       datetime t1=today+InpL_RangeStart*3600, t2=today+InpL_ForceClose*3600;
-      Tr("PCAD_RH",t1,m_rh,t2,m_rh,clrSlateGray,STYLE_SOLID);
-      Tr("PCAD_RL",t1,m_rl,t2,m_rl,clrSlateGray,STYLE_SOLID);
-      Tr("PCAD_EQ",t1,m_eq,t2,m_eq,clrGold,STYLE_DASH);
+      if(m_rangeValid)
+      {
+         V_Box("PCAD_BOX_"+ds,t1,m_rh,t2,m_rl,clrDarkSlateGray);
+         V_Seg("PCAD_EQ_"+ds,t1,m_eq,t2,m_eq,clrGold,STYLE_DASH,1);
+         V_Text("PCAD_EQT_"+ds,t1,m_eq,"EQ",clrGold);
+      }
+      else
+      {
+         V_Seg("PCAD_RH_"+ds,t1,m_rh,t2,m_rh,clrDimGray,STYLE_DOT,1);
+         V_Seg("PCAD_RL_"+ds,t1,m_rl,t2,m_rl,clrDimGray,STYLE_DOT,1);
+         V_Text("PCAD_RNX_"+ds,t1,m_rh,"range gecersiz",clrDimGray);
+      }
    }
-   void Tr(string n,datetime t1,double p1,datetime t2,double p2,color c,int st)
-   { ObjectCreate(0,n,OBJ_TREND,0,t1,p1,t2,p2); ObjectSetInteger(0,n,OBJPROP_COLOR,c);
-     ObjectSetInteger(0,n,OBJPROP_STYLE,st); ObjectSetInteger(0,n,OBJPROP_RAY_RIGHT,false);
-     ObjectSetInteger(0,n,OBJPROP_BACK,true); ObjectSetInteger(0,n,OBJPROP_SELECTABLE,false); }
+
+   void DrawEntry(int dir,double price,string label)
+   {
+      datetime tt=iTime(_Symbol,_Period,0); string tag=V_Tag(tt);
+      if(dir>0){ V_Arrow("PCAD_BUY_"+tag,tt,price,233,clrLime);  V_Text("PCAD_BUYX_"+tag,tt,price,label,clrLime); }
+      else     { V_Arrow("PCAD_SEL_"+tag,tt,price,234,clrRed);   V_Text("PCAD_SELX_"+tag,tt,price,label,clrRed); }
+   }
 };
 
 //==================================================================//
